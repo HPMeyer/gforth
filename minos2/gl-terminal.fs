@@ -170,8 +170,14 @@ FVariable scroll-dest
 FVariable scroll-source
 FVariable scroll-time
 
-80 Value hcols
-48 Value vcols
+\ HPM 20170317 
+\   I like to set the number of columns by my own ;-) 
+\   Earlier i stored my preferred values in hcols and vcols. 
+\   Since the last update, scale-me calculates hcols and vcols dynamically. 
+\   Therefore i added default-hcols and default-vcols and replaced 
+\   the literals in scale-me by default-hcols and default-vcols. 
+80 dup  Value default-hcols  Value hcols 
+48 dup  Value default-vcols  Value hcols 
 
 : form-chooser ( -- )
     screen-orientation 1 and  IF  hcols  ELSE  vcols  THEN
@@ -409,7 +415,13 @@ previous
 : scale-me ( -- )
     \ smart scaler, scales using square root relation
     default-diag screen-diag f/ fsqrt default-scale f*
-    1/f 80 fdup fm* f>s to hcols 48 fm* f>s to vcols
+    \ HPM 20170314 
+    \   replaced 80 by default-hcols and 48 by default-vcols defined earlier. 
+    \   Now you can change the numbers of columns by changing 
+    \   these default values and calling scale-me. 
+    \   The dynamic calculation of hcols and vcols gives no warranty, 
+    \   that hcols and vcols hit their default values exactly ;-) 
+    1/f  default-hcols fdup fm* f>s to hcols  default-vcols fm* f>s to vcols 
     resize-screen config-changed ;
 
 : gl-fscale ( f -- ) to default-scale scale-me ;
