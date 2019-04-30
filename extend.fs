@@ -1,6 +1,6 @@
 \ EXTEND.FS    CORE-EXT Word not fully tested!         12may93jaw
 
-\ Copyright (C) 1995,1998,2000,2003,2005,2007,2009,2010,2011,2013,2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1998,2000,2003,2005,2007,2009,2010,2011,2013,2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -107,6 +107,21 @@ decimal
 	    2swap 2drop 2r> 2drop true exit
 	endif
 	1 /string
+    repeat
+    2drop 2r> 2drop false ;
+
+: capsstring-prefix? ( c-addr1 u1 c-addr2 u2 -- f ) \ gforth
+    \G Is @var{c-addr2 u2} a case-oblivious prefix of @var{c-addr1 u1}?
+    tuck 2>r umin 2r> capscompare 0= ;
+
+: capssearch ( c-addr1 u1 c-addr2 u2 -- c-addr3 u3 flag ) \ gforth
+    \G Like \code{search}, but case-insensitive for ASCII characters:
+    \G Search for c-addr2 u2 in c-addr1 u1; flag is true if found.
+    2>r 2dup begin ( c-addr1 u1 c-addr4 u4 )
+        dup r@ u>= while
+	    2dup 2r@ capsstring-prefix? if
+		2swap 2drop 2r> 2drop true exit then
+	    1 /string
     repeat
     2drop 2r> 2drop false ;
 
@@ -251,11 +266,11 @@ variable span ( -- c-addr ) \ core-ext-obsolescent
 [THEN]
     dup @ udp !  cell+ @ vtable-list !  dp !
     \ clean up vocabulary stack
-    0 vocstack $@ bounds cell- swap cell-
-    -DO
+    0 vocstack $@ bounds
+    U+DO
 	I @ dup here u>
 	IF  drop  ELSE  swap 1+  THEN
-    cell -LOOP
+    cell +LOOP
     dup 0= or set-order \ -1 set-order if order is empty
     get-current here > IF
 	forth-wordlist set-current

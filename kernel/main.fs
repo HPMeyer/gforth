@@ -1,6 +1,6 @@
 \ MAIN.FS      Kernel main load file                   20may93jaw
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2008,2011,2012,2013,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2008,2011,2012,2013,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -82,6 +82,7 @@ doc-on
 
 has? header [IF]
 1802 <> [IF] .s cr .( header start address expected!) cr uffz [THEN]
+wheres-off
 AConstant image-header
 : forthstart image-header @ ;
 [THEN]
@@ -120,6 +121,7 @@ include kernel/toolsext.fs
 include kernel/tools.fs               \ load tools ( .s dump )
 include kernel/getdoers.fs
 include kernel/copydoers.fs
+include kernel/memory.fs
 
 \ Setup                                                13feb93py
 
@@ -128,11 +130,11 @@ include kernel/pass.fs                    \ pass pointers from cross to target
 has? header [IF]
     \ set image size
     here image-header 2 cells + !         
-    ." set image entry point" cr
-    ' boot       >body  image-header #08 cells + A!
-    ' quit       >body  image-header #10 cells + A!
-    ' do-execute >body  image-header #11 cells + A!
-    ' do-find    >body  image-header #12 cells + A!
+    .( set image entry point) cr
+    ' boot       >body  image-header #08 cells + !
+    ' quit       >body  image-header #10 cells + !
+    ' do-execute >body  image-header #11 cells + !
+    ' do-find    >body  image-header #12 cells + !
 [ELSE]
     >boot
 [THEN]

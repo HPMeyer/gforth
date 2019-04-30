@@ -1,6 +1,6 @@
-\ wrapper to load Swig-generated libraries
+\ Android based stuff, including wrapper to androidlib.fs
 
-\ Copyright (C) 2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -21,9 +21,7 @@ require struct0x.fs
 
 \ public interface, C calls us through these
 
-get-current also forth definitions
-
-previous set-current
+Defer reload-textures ' noop is reload-textures
 
 \ The rest is in the "android" vocabulary
 
@@ -33,6 +31,8 @@ get-current also android definitions
 Defer akey
 
 c-library android
+    :noname open-path-lib drop ; is prefetch-lib
+
     \c #include <android/input.h>
     \c #include <android/keycodes.h>
     \c #include <android/native_window.h>
@@ -98,12 +98,11 @@ require unix/cpu.fs
 require unix/socket.fs
 require unix/pthread.fs
 require unix/jni-helper.fs
+require minos2/need-x.fs
 
 set-current previous
 
-Variable need-sync need-sync on
-Variable need-show need-show on
-Variable need-config
++sync +show +keyboard
 
 app_input_state buffer: *input
 
@@ -127,8 +126,9 @@ Create akey>ekey
 AKEYCODE_HOME c, "\e[H" $,
 AKEYCODE_DPAD_UP c, "\e[A" $,
 AKEYCODE_DPAD_DOWN c, "\e[B" $,
-AKEYCODE_VOLUME_UP c, "\e[A" $,
-AKEYCODE_VOLUME_DOWN c, "\e[B" $,
+AKEYCODE_VOLUME_UP c, "\eVU" $,
+AKEYCODE_VOLUME_DOWN c, "\eVD" $,
+AKEYCODE_VOLUME_MUTE c, "\eVM" $,
 AKEYCODE_DPAD_LEFT c, "\e[D" $,
 AKEYCODE_DPAD_RIGHT c, "\e[C" $,
 AKEYCODE_TAB c, "\t" $,
@@ -189,6 +189,8 @@ JValue psize
 newPoint to psize
 JValue dmetrics
 newDisplayMetrics to dmetrics
+JValue screenrect
+newRect to screenrect
 
 : screen-orientation@ ( -- 0..3 )
     clazz >o getWindowManager >o getDefaultDisplay >o
@@ -199,15 +201,21 @@ newDisplayMetrics to dmetrics
 : screen-size@ ( -- w h )
     screen-metric@
     dmetrics >o widthPixels heightPixels o> ;
+: screen-xywh@ ( -- x y w h )
+    clazz >o getWindow >o getDecorView >o
+    screenrect getWindowVisibleDisplayFrame ref> ref> o>
+    screenrect >o left top right bottom o> ;
 
 $80 Constant FLAG_KEEP_SCREEN_ON
 
 false value wake-lock \ doesn't work, why?
 
-: screen+keep ( -- )  wake-lock IF
-	clazz >o getWindow o> >o FLAG_KEEP_SCREEN_ON addFlags ref> THEN ;
-: screen-keep ( -- )  wake-lock IF
-	clazz >o getWindow o> >o FLAG_KEEP_SCREEN_ON clearFlags ref> THEN ;
+: hidestatus ( -- ) ['] rhidestatus post-it ;
+: showstatus ( -- ) ['] rshowstatus post-it ;
+: screen+keep ( -- )  ['] rkeepscreenon post-it ;
+: screen-keep ( -- )  ['] rkeepscreenoff post-it ;
+: screen+secure ( -- )  ['] rsecurescreenon post-it ;
+: screen-secure ( -- )  ['] rsecurescreenoff post-it ;
 
 \ callbacks
 
@@ -221,11 +229,11 @@ Create direct-key# 0 c,
     0
     meta-key# @ AMETA_SHIFT_ON and 0<> 1 and  or
     meta-key# @ AMETA_ALT_ON   and 0<> 2 and  or
-    meta-key# @ AMETA_CTRL_ON  and 0<> 4 and  or  '1' + ;
+    meta-key# @ AMETA_CTRL_ON  and 0<> 4 and  or ;
 
 : +meta ( addr u -- addr' u' ) \ insert meta information
-    over c@ #esc <> ?EXIT
-    meta@ dup '1' = IF  drop  EXIT  THEN \ no meta, don't insert
+    >r over c@ #esc <> IF  rdrop  EXIT  THEN
+    r> dup 0= IF  drop  EXIT  THEN  '1' + \ no meta, don't insert
     [: >r 1- 2dup + c@ >r
 	over 1+ c@ '[' = IF
 	    2dup 1- + c@ '9' 1+ '0' within
@@ -246,7 +254,7 @@ Create direct-key# 0 c,
     case
 	AKEYCODE_MENU of  togglekb s" "  endof
 	AKEYCODE_BACK of  aback    s" "  endof
-	akey>ekey +meta 0
+	akey>ekey meta@ +meta 0
     endcase ;
 
 16 Value looper-to#
@@ -262,8 +270,8 @@ variable looperfds pollfd 8 * allot
     poll-file 0= IF  app ke-fd0 l@ "r" fdopen to poll-file  THEN ;
 : looper-init ( -- )  looperfds off
     app ke-fd0 l@    POLLIN +fds
-    infile-id fileno POLLIN +fds
     epiper @ fileno  POLLIN +fds
+    infile-id ?dup-IF  fileno POLLIN +fds  THEN
     ?poll-file ;
 
 : get-event ( -- )
@@ -276,47 +284,65 @@ variable looperfds pollfd 8 * allot
     rot poll 0>
     IF	looperfds cell+ revents w@ POLLIN and dup >r
 	IF  get-event  THEN
-	looperfds cell+ pollfd 2* + revents w@ POLLIN and
+	looperfds cell+ pollfd + revents w@ POLLIN and
 	IF  ?events  THEN
 	r>
     ELSE  false
     THEN ;
 
-: >looper  looper-init
-    BEGIN  0 poll? 0=  UNTIL  looper-to# poll? drop ;
+Defer ?looper-timeouts ' noop is ?looper-timeouts
+
+: #looper  looper-init
+    BEGIN  ?looper-timeouts  0 poll? 0=  UNTIL  poll? drop ;
+: >looper ( -- ) looper-to# #looper ;
 : ?looper  BEGIN  >looper  app window @ UNTIL ;
 	    
 \ : >looper  BEGIN  0 poll_looper 0<  UNTIL looper-to# poll_looper drop ;
 \ : ?looper  BEGIN >looper app window @ UNTIL ;
 
-:noname  0 poll? drop  defers key? ; IS key?
 Defer screen-ops ' noop IS screen-ops
 
-true Value firstkey
+:noname  0 poll? drop
+    key-buffer $@len 0<>  infile-id ?dup-IF  key?-file  or  THEN
+    screen-ops
+; IS key?
+
 : android-key-ior ( -- key / ior )
-    firstkey IF  showkb false to firstkey  THEN
-    need-show on  BEGIN  >looper key? winch? @ or screen-ops  UNTIL
-    defers key-ior dup #cr = key? and IF  key-ior ?dup-IF inskey THEN THEN ;
+    ?keyboard IF  showkb -keyboard  THEN
+    +show
+    BEGIN  >looper key? winch? @ or  UNTIL
+    winch? @ IF  EINTR  ELSE
+	infile-id IF
+	    defers key-ior dup #cr = key? and
+	    IF  key-ior ?dup-IF inskey THEN THEN
+	ELSE  inskey@  THEN
+    THEN ;
 ' android-key-ior IS key-ior
+
+: android-deadline ( dtime -- )
+    up@ [ up@ ]L = IF screen-ops THEN  defers deadline ;
+' android-deadline IS deadline
 
 Defer config-changed
 Defer window-init    :noname [: ." app window " app window @ hex. cr ;] $err ; IS window-init
 screen-ops     ' noop IS screen-ops
 
-#16 Value config-change#
-:noname ( -- ) config-change# need-config ! ; is config-changed
+:noname ( -- ) +sync +config ; is config-changed
 
 Variable rendering  -2 rendering ! \ -2: on, -1: pause, 0: stop
 
-: nostring ( -- ) setstring $off ;
-: insstring ( -- )  setstring $@ inskeys nostring ;
+: nostring ( -- ) setstring$ $off ;
+: insstring ( -- )  setstring$ $@ inskeys nostring ;
 
 : android-characters ( string -- )  jstring>sstring
     nostring inskeys jfree ;
-: android-commit     ( string/0 -- ) ?dup-0=-IF  insstring  ELSE
-	jstring>sstring inskeys jfree setstring $off  THEN ;
-: android-setstring  ( string -- ) jstring>sstring setstring $! jfree
-    ctrl L inskey ;
+Defer android-commit
+:noname     ( string/0 -- ) ?dup-0=-IF  insstring  ELSE
+	jstring>sstring inskeys jfree setstring$ $off  THEN ; is android-commit
+Defer android-setstring
+Defer android-inskey ' inskey is android-inskey
+:noname  ( string -- ) jstring>sstring setstring$ $! jfree
+    ctrl L android-inskey ; is android-setstring
 : android-unicode    ( uchar -- )   >xstring inskeys ;
 : android-keycode    ( keycode -- ) keycode>keys inskeys ;
 
@@ -325,14 +351,12 @@ Variable rendering  -2 rendering ! \ -2: on, -1: pause, 0: stop
     0 -rot bounds ?DO  1+ I I' over - x-size +LOOP ;
 
 : android-edit-update ( span addr pos1 -- span addr pos1 )
-    2dup xcs swap >r >r
-    2dup swap make-jstring r> clazz .setEditLine r> ;
+    xedit-update  2dup xcs swap >r >r
+    2dup swap make-jstring r> 0 clazz .setEditLine r> ;
 ' android-edit-update is edit-update
 
-: ins-esc# ( n char -- ) swap 0 max 1+
-    [: .\" \e[;" 0 .r emit ;] $tmp inskeys ;
-: android-setcur ( n -- ) 'H' ins-esc# ;
-: android-setsel ( n -- ) 'S' ins-esc# ;
+: android-setcur ( +n -- ) setcur# ! ;
+: android-setsel ( +n -- ) setsel# ! ctrl S android-inskey ;
 
 JValue key-event
 JValue touch-event
@@ -349,18 +373,19 @@ JValue cmanager
 : .network ( -- )  network-info
     ?dup-IF  .network-info  ELSE  ." no active network"  THEN cr ;
 
-: android-key ( event -- )
+: key>event ( event -- )
     dup to key-event >o
     ke_getMetaState meta-key# !
     getAction dup 2 = IF  drop
-	getKeyCode dup 0=
-	IF    drop getCharacters android-characters
-	ELSE  android-keycode
+	getKeyCode
+	?dup-IF  android-keycode
+	ELSE  getCharacters android-characters
 	THEN
     ELSE
-	0= IF  getKeyCode dup 0=
-	    IF    drop getUnicodeChar android-unicode
-	    ELSE  android-keycode
+	0= IF
+	    getUnicodeChar
+	    ?dup-IF  android-unicode
+	    ELSE  getKeyCode android-keycode
 	    THEN
 	THEN
     THEN o> ;
@@ -398,6 +423,7 @@ Defer android-surface-changed ' ]gref is android-surface-changed
 Defer android-surface-redraw ' ]gref is recurse
 Defer android-video-size ' ]gref is recurse
 Defer android-touch ' touch>event is recurse
+Defer android-key   ' key>event is recurse
 
 : android-surface-created ( surface -- )
     app window @ 0= IF
@@ -411,20 +437,26 @@ Defer android-touch ' touch>event is recurse
 : android-log$ ( string -- )  jstring>sstring ." log: " type cr jfree ;
 Defer android-w! ( n -- ) ' drop is recurse
 Defer android-h! ( n -- ) ' drop is recurse
-Defer clipboard! ( 0 -- ) ' drop is recurse
+Defer clipboard-changed ( 0 -- ) ' drop is recurse
 : android-config! ( n -- ) to screen-orientation config-changed ;
 
 Defer android-active
+
 :noname ( flag -- )
     \ >stderr ." active: " dup . cr
     dup rendering !  IF
 	16 to looper-to#
-	need-show on need-sync on screen-ops
+	rendering @ -2 <= IF  reload-textures
+	    +show +sync +config +textures screen-ops  THEN
     ELSE  16000 to looper-to#  THEN ; is android-active
 
-Defer android-alarm ( 0 -- ) ' drop is recurse
+Defer android-alarm ( 0 -- ) ' drop is android-alarm
 Defer android-network ( metered -- )
 ( :noname drop .network cr ; ) ' drop is android-network
+Defer android-notification ( intent -- )
+( :noname drop ." Got intent" cr ; ) ' drop is android-notification
+Defer android-context-menu ( id -- )
+:noname 2 = IF  paste  THEN ; is android-context-menu
 
 Create aevents
 ' android-key ,
@@ -443,13 +475,15 @@ Create aevents
 ' android-setstring ,
 ' android-w! ,
 ' android-h! ,
-' clipboard! , \ primary clipboard changed
+' clipboard-changed , \ primary clipboard changed
 ' android-config! ,
 ' android-active ,
 ' android-setcur ,
 ' android-setsel ,
 ' android-alarm ,
 ' android-network ,
+' android-notification ,
+' android-context-menu ,
 here aevents - cell/
 ' drop ,
 Constant max-event#

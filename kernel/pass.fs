@@ -1,6 +1,6 @@
 \ pass.fs pass pointers from cross to target		20May99jaw
 
-\ Copyright (C) 1999,2001,2003,2006,2007,2013,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1999,2001,2003,2006,2007,2013,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -31,6 +31,21 @@ UNLOCK tlast @ LOCK
 dup forth-wordlist has? ec 0= [IF] wordlist-id [THEN] ! Last !
 
 unlock vt, tvtable-list @ lock vtable-list !
-unlock included-files, lock included-files !
+
+here to locs-start
+
+\ list of arrays to restore at boot
+align here boot[][] ! boot[][],
+
+\ list of strings to resture at boot
+align here boot$[] !  boot$[],
+
+included-files, included-files !
+
+align here default-recognizer !
+2 cells , ' rec-num A, ' rec-word A,
+
+align here wheres !
+wheres,
 
 >ram here normal-dp !

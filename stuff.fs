@@ -1,6 +1,6 @@
 \ miscelleneous words
 
-\ Copyright (C) 1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -138,6 +138,14 @@ AUser CSP
     repeat
     - + dup >r resize throw r> ;
 
+\ file>path
+
+: file>path ( addr1 u1 path-addr -- addr2 u2 ) \ gforth
+    open-path-file throw rot close-file throw ;
+
+: file>fpath ( addr1 u1 -- addr2 u2 ) \ gforth
+    fpath file>path ;
+
 \ ]] ... [[
 
 : [[ ( -- ) \ gforth left-bracket-bracket
@@ -189,9 +197,9 @@ AUser CSP
 
 [ifdef] compiler-r
 : postponer-r ( addr u -- ... xt )
-    recognize dup
+    forth-recognizer recognize over
     [ s" [[" find-name ] Literal =
-    IF  drop [comp'] ] drop ELSE  ['] >postpone  THEN ;
+    IF  2drop [comp'] ] drop ELSE  ['] >postpone  THEN ;
 
 : ]] ( -- ) \ gforth right-bracket-bracket
     \G switch into postpone state
@@ -220,6 +228,14 @@ comp' sliteral drop alias postpone-sliteral
 \G allocated permanently, you can use @code{]]2L} instead.
     ]] postpone-sliteral ]] [[ ; immediate
 
+\ interp
+
+: >interp ( .. rectype -- )
+    dup >r rectype>post execute r> rectype>int compile, ;
+: [interp] ( "name" -- )
+    \G Compiles the interpretation semantics of @i{name}, see @code{postpone}.
+    parse-name forth-recognizer recognize >interp ; immediate compile-only
+
 \ f.rdp
 
 : push-right ( c-addr u1 u2 cfill -- )
@@ -233,7 +249,7 @@ comp' sliteral drop alias postpone-sliteral
     \ um1 is the mantissa length to try, um2 is the actual mantissa length
     c-addr ur um1 /string '0 fill
     rf c-addr um1 represent if { nexp fsign }
-	nd nexp + up >=
+	nd nexp + up >= up 0= or
 	ur nd - 1- dup { beforep } fsign + nexp 0 max >= and if
 	    \ fixed-point notation
 	    c-addr ur beforep nexp - dup { befored } '0 push-right
@@ -263,11 +279,11 @@ comp' sliteral drop alias postpone-sliteral
 	    #>> mantlen
 	endif
     else \ inf or nan
-	if \ negative
-	    c-addr ur 1 '- push-right
-	endif
-	drop ur
-	\ !! align in some way?
+        \ don't rely on REPRESENT result
+        2drop
+        rf f0< if s" -Inf" else rf f0>= if s" Inf" else s" NaN" endif endif
+        c-addr ur rot umin dup >r move c-addr ur r> /string blank
+        ur
     endif
     1 max ur min ;
 
@@ -310,9 +326,11 @@ comp' sliteral drop alias postpone-sliteral
 \G exponential notation because fixed-point notation would have too
 \G few significant digits, yet exponential notation offers fewer
 \G significant digits.  We recommend @i{nr}>=@i{nd}+2, if you want to
-\G have fixed-point notation for some numbers.  We recommend
-\G @i{np}>@i{nr}, if you want to have exponential notation for all
-\G numbers.
+\G have fixed-point notation for some numbers; the smaller the value
+\G of @i{np}, the more cases are shown in fixed-point notation (cases
+\G where few or no significant digits remain in fixed-point notation).
+\G We recommend @i{np}>@i{nr}, if you want to have exponential
+\G notation for all numbers.
     f>str-rdp type ;
 
 0 [if]
@@ -344,16 +362,22 @@ comp' sliteral drop alias postpone-sliteral
     ." <" fdepth 0 .r ." > " fdepth 0 max maxdepth-.s @ min dup 0 
     ?DO  dup i - 1- floats fp@ + f@ 16 5 11 f.rdp space LOOP  drop ; 
 
+\ new interpret/compile:
+
+: interpret/compile: ( interp-xt comp-xt "name" -- ) \ gforth
+    swap alias ,
+    ['] i/c>comp set->comp
+    ['] no-to set-to
+    ['] no-defer@ set-defer@ ;
+
 \ defer stuff
 
-[ifundef] defer@ : defer@ >body @ ; [then]
-
 :noname ' defer@ ;
-:noname  postpone ['] postpone defer@ ;  2dup
-interpret/compile: action-of ( interpretation "name" -- xt; compilation "name" -- ; run-time -- xt ) \ gforth
+:noname (') name>int defer@, ;
+interpret/compile: action-of ( interpretation "name" -- xt; compilation "name" -- ; run-time -- xt ) \ core-ext
 \G @i{Xt} is the XT that is currently assigned to @i{name}.
 
-interpret/compile: what's ( interpretation "name" -- xt; compilation "name" -- ; run-time -- xt ) \ gforth-obsolete
+synonym what's action-of ( interpretation "name" -- xt; compilation "name" -- ; run-time -- xt ) \ gforth-obsolete
 \G Old name of @code{action-of}
 
 
@@ -517,7 +541,8 @@ previous
     \G string has zero length. A program may replace characters within
     \G the counted string. OBSOLESCENT: the counted string has a
     \G trailing space that is not included in its length.
-    sword here place  bl here count + c!  here ;
+    sword dup word-pno-size u>= IF  -18 throw  THEN
+    here place  bl here count + c!  here ;
 
 \ quotations
 
@@ -570,8 +595,8 @@ previous
 
 \ 2value
 
-: (2to) ( addr -- ) >body 2! ;
-comp: drop >body postpone literal postpone 2! ;
+to: (2to) ( addr -- ) >body 2!-table to-!exec ;
+to-opt: ( xt -- ) >body postpone literal 2!-table to-!, ;
 
 : 2Value ( d "name" -- ) \ Forth200x
     Create 2,
@@ -580,21 +605,15 @@ comp: drop >body postpone literal postpone 2! ;
   DOES> 2@ ;
 
 s" help.txt" open-fpath-file throw 2drop slurp-fid save-mem-dict
-
-2>r : help ( -- ) [ 2r> ] 2literal type ; \ gforth
+2>r : basic-help ( -- ) [ 2r> ] 2literal type ;
 \G Print some help for the first steps
 
-\ r:word and r:name
+\ rectype-word and rectype-name
 
 :noname drop execute ;
 :noname 0> IF execute ELSE compile, THEN ;
 :noname postpone 2literal ;
-recognizer r:word ( takes xt +/-1, i.e. result of find and search-wordlist )
-
-:noname r>int execute ;
-:noname r>comp execute ;
-' lit,
-recognizer r:name ( takes nt, i.e. result of find-name and find-name-in )
+rectype: rectype-word ( takes xt +/-1, i.e. result of find and search-wordlist )
 
 \ concat recognizers to another recognizer
 
@@ -604,7 +623,7 @@ recognizer r:name ( takes nt, i.e. result of find-name and find-name-in )
     \G like on the recognizer stack
     n>r : nr> ]] 2>r [[ 0 ?DO
 	]] 2r@ [[ compile,
-	]] dup r:fail <> IF 2rdrop EXIT THEN drop [[
+	]] dup rectype-null <> IF 2rdrop EXIT THEN drop [[
     LOOP ]] 2rdrop ; [[ ;
 
 \ growing buffers that need not be full
@@ -650,3 +669,15 @@ end-struct buffer%
 	    buf $@ drop swap 2dup match filename-match
 	    IF  xt execute  THEN  REPEAT
     buf $free  handle close-dir throw ;
+
+: s+ { addr1 u1 addr2 u2 -- addr u }
+    u1 u2 + allocate throw { addr }
+    addr1 addr u1 move
+    addr2 addr u1 + u2 move
+    addr u1 u2 +
+;
+
+: append { addr1 u1 addr2 u2 -- addr u }
+    addr1 u1 u2 + dup { u } resize throw { addr }
+    addr2 addr u1 + u2 move
+    addr u ;

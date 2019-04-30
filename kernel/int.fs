@@ -1,6 +1,6 @@
 \ definitions needed for interpreter only
 
-\ Copyright (C) 1995-2000,2004,2005,2007,2009,2010,2012,2013,2014 Free Software Foundation, Inc.
+\ Copyright (C) 1995-2000,2004,2005,2007,2009,2010,2012,2013,2014,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -23,16 +23,13 @@
 
 \ \ input stream primitives                       	23feb93py
 
-has? new-does [IF]
-    : extra, ['] extra-exec peephole-compile, , ;
-    : >comp  ( xt -- ) name>comp execute ;
-    : post,  ( xt -- ) lit, postpone >comp ;
-    : no-to ( xt -- )
-	\ default to action: report an error ASAP (even right when COMPILE,ing)
-	#-12 throw ;
-    opt: #-12 throw ; \ 
-    : no-defer@ ( xt -- ) #-2055 throw ;
-[THEN]
+: >comp  ( xt -- ) name>comp execute ;
+: no-to ( xt -- )
+    \ default to action: report an error ASAP (even right when COMPILE,ing)
+    #-12 throw ;
+opt: #-12 throw ; \ 
+: no-defer@ ( xt -- ) #-2055 throw ;
+opt: #-2055 throw ;
 
 require ./basics.fs 	\ bounds decimal hex ...
 require ./io.fs		\ type ...
@@ -48,21 +45,24 @@ require kernel/version.fs \ version-string
 
 \ parse                                           23feb93py
 
-: parse    ( char "ccc<char>" -- c-addr u ) \ core-ext
+: (parse)    ( char "ccc<char>" -- c-addr u ) \ core-ext
 \G Parse @i{ccc}, delimited by @i{char}, in the parse
 \G area. @i{c-addr u} specifies the parsed string within the
 \G parse area. If the parse area was empty, @i{u} is 0.
     >r  source  >in @ over min /string ( c-addr1 u1 )
     over  swap r>  scan >r
-    over - dup r> IF 1+ THEN  >in +!
-    2dup input-lexeme! ;
+    over - dup r@ IF 1+ THEN  >in +!
+    2dup r> 0<> - input-lexeme! ;
+
+Defer parse  ' (parse) is parse
 
 \ name                                                 13feb93py
 
 [IFUNDEF] (name) \ name might be a primitive
 
 : (name) ( -- c-addr count ) \ gforth
-    source 2dup >r >r >in @ /string (parse-white)
+    source 2dup >r >r >in @ 2dup u< IF  -18 throw  THEN
+    /string (parse-white)
     2dup input-lexeme!
     2dup + r> - 1+ r> min >in ! ;
 \    name count ;
@@ -261,6 +261,41 @@ Defer context ( -- addr ) \ gforth
 \G @code{context} @code{@@} is the @i{wid} of the word list at the
 \G top of the search order.
 
+$variable wheres
+
+0
+field: where-nt
+field: where-loc
+constant where-struct
+
+: where-duplicate? ( nt -- f )
+    \ true if the current where tuple would be a duplicate of the last
+    \ one; these duplicates occur due to FIND-NAME-IN being called
+    \ once for LOOKUP and then again for the individual wordlists.
+    wheres $@ dup if ( nt addr u )
+	where-struct - + >r
+	dup r@ where-nt @ =
+	r> where-loc @ current-sourceview = and if
+	    drop true exit then
+    else
+	2drop then
+    drop false ;
+
+: where, ( nt -- )
+    \ store nt and the current source position for use by WHERE
+    dup if ( nt )
+	source-id dup -1 <> and if ( nt )
+	    dup where-duplicate? 0= if
+		where-struct wheres $+!len >r
+		dup r@ where-nt !
+		current-sourceview r> where-loc !
+	    then
+	then
+    then
+    drop ;
+
+\ find and friends
+
 ' lookup is context
 forth-wordlist current !
 
@@ -268,7 +303,7 @@ forth-wordlist current !
     \G search the word list identified by @i{wid} for the definition
     \G named by the string at @i{c-addr u}. Return its @i{nt}, if
     \G found, otherwise 0.
-    dup wordlist-map @ find-method perform ;
+    dup wordlist-map @ find-method perform dup where, ;
 
 : search-wordlist ( c-addr count wid -- 0 | xt +-1 ) \ search
     \G Search the word list identified by @i{wid} for the definition
@@ -295,22 +330,23 @@ forth-wordlist current !
 \ 32-bit systems cannot generate large 64-bit constant in the
 \ cross-compiler, so we kludge it by generating a constant and then
 \ storing the proper value into it (and that's another kludge).
-$80000000 constant alias-mask
-1 bits/char 1 - lshift
--1 cells allot  bigendian [IF]   c, 0 1 cells 1- times
-                          [ELSE] 0 1 cells 1- times c, [THEN]
-$40000000 constant immediate-mask
+\ $80000000 constant alias-mask
+\ 1 bits/char 1 - lshift
+\ -1 cells allot  bigendian [IF]   c, 0 1 cells 1- times
+\                           [ELSE] 0 1 cells 1- times c, [THEN]
+\ $80000000 constant immediate-mask
+\ 1 bits/char 1 - lshift
+\ -1 cells allot  bigendian [IF]   c, 0 1 cells 1- times
+\                           [ELSE] 0 1 cells 1- times c, [THEN]
+$40000000 constant restrict-mask
 1 bits/char 2 - lshift
 -1 cells allot  bigendian [IF]   c, 0 1 cells 1- times
                           [ELSE] 0 1 cells 1- times c, [THEN]
-$20000000 constant restrict-mask
-1 bits/char 3 - lshift
--1 cells allot  bigendian [IF]   c, 0 1 cells 1- times
-                          [ELSE] 0 1 cells 1- times c, [THEN]
-$10000000 constant prelude-mask
-1 bits/char 4 - lshift
--1 cells allot  bigendian [IF]   c, 0 1 cells 1- times
-                          [ELSE] 0 1 cells 1- times c, [THEN]
+\ $20000000 constant prelude-mask
+\ 1 bits/char 3 - lshift
+\ -1 cells allot  bigendian [IF]   c, 0 1 cells 1- times
+\                           [ELSE] 0 1 cells 1- times c, [THEN]
+\ $01000000 constant unused-mask \ defined in locate1.fs, used only temporarily
 \ reserve 8 bits for all possible flags in total
 $00ffffff constant lcount-mask
 0 -1 cells allot  bigendian [IF]   c, -1 1 cells 1- times
@@ -340,12 +376,11 @@ $00ffffff constant lcount-mask
 
 (field) >vtlink      0 cells ,
 (field) >vtcompile,  1 cells ,
-(field) >vtlit,      2 cells ,
-(field) >vtextra     3 cells ,
-(field) >vtto        4 cells ,
-(field) >vt>int      5 cells ,
-(field) >vt>comp     6 cells ,
-(field) >vtdefer@    7 cells ,
+(field) >vtto        2 cells ,
+(field) >vt>int      3 cells ,
+(field) >vt>comp     4 cells ,
+(field) >vtdefer@    5 cells ,
+(field) >vtextra     6 cells ,
 
 1 cells -3 cells \ mini-oof class declaration with methods
 \ the offsets are a bit odd to keep the xt as point of reference
@@ -353,11 +388,9 @@ cell var >f+c
 cell var >link
 cell var >namevt
 
-method compile, ( xt -- )
-swap
-cell+ \ postpone action has no simple method
-cell+ \ extra has no simple method
-swap
+method opt-compile, ( xt -- ) \ gforth-internal
+\g The intelligent @code{compile,} compiles each word as specified by
+\g @code{set-optimizer} for that word.
 
 method (int-to) ( val xt -- ) \ gforth paren-int-to
 \G direct call performs the interpretation semantics of to
@@ -372,9 +405,26 @@ method name>comp ( nt -- w xt ) \ gforth name-to-comp
 method defer@ ( xt-deferred -- xt ) \ gforth defer-fetch
 \G @i{xt} represents the word currently associated with the deferred
 \G word @i{xt-deferred}.
-drop Constant vtsize \ vtable size
+drop cell+ Constant vtsize \ vtable size
 
-: immediate? ( nt -- flag ) >f+c @ immediate-mask and 0<> ;
+defer compile, ( xt -- )
+\G Append the semantics represented by @i{xt} to the current
+\G definition.  When the resulting code fragment is run, it behaves
+\G the same as if @i{xt} is @code{execute}d.
+' opt-compile, is compile,
+
+' opt-compile, alias opt-something, ( xt1 xt2 -- ) \ gforth-internal
+\ TO: and DEFER@: define not-quite-words that have code-generation
+\ code fragments with the stack effect ( xt1 xt2 -- ), where xt1
+\ identifies the word to which to or defer@ is applied, while xt2
+\ identifies the not-quite-word that implements the TO or DEFER@
+\ behaviour of that
+
+: ,     ( w -- ) \ core comma
+    \G Reserve data space for one cell and store @i{w} in the space.
+    cell small-allot ! ;
+
+: immediate? ( nt -- flag )    name>comp nip ['] compile, <> ;
 : compile-only? ( nt -- flag ) >f+c @ restrict-mask and 0<> ;
 : ?compile-only ( nt -- nt )
     dup compile-only? IF
@@ -389,33 +439,18 @@ drop Constant vtsize \ vtable size
 
 : name>string ( nt -- addr count ) \ gforth     name-to-string
     \g @i{addr count} is the name of the word represented by @i{nt}.
+\    dup >namevt @ >vt>int @ ['] noop = IF  drop 0 0  EXIT  THEN
     >f+c dup @ lcount-mask and tuck - swap ;
 
 : name>view ( nt -- addr ) \ gforth   name-to-view
     name>string drop cell negate and cell- ;
-
-: (name>x) ( nfa -- cfa w )
-    \ cfa is an intermediate cfa and w is the flags cell of nfa
-    dup >f+c @ dup alias-mask and 0=
-    IF
-	swap @ swap
-    THEN ;
 
 : default-name>int ( nt -- xt ) \ gforth paren-name-to-int
     \G @i{xt} represents the interpretation semantics of the word
     \G @i{nt}. If @i{nt} has no interpretation semantics (i.e. is
     \G @code{compile-only}), @i{xt} is the execution token for
     \G @code{ticking-compile-only-error}, which performs @code{-2048 throw}.
-    (name>x) drop ;
-
-: (x>comp) ( xt w -- xt +-1 )
-    immediate-mask and flag-sign ;
-
-\ these transformations are used for legacy words like find
-
-: (name>comp) ( nt -- xt +-1 ) \ gforth
-    \G @i{w xt} is the compilation token for the word @i{nt}.
-    name>comp ['] execute = flag-sign ;
+;
 
 : (name>intn) ( nfa -- xt +-1 )
     dup name>int swap name>comp nip ['] execute = flag-sign ;
@@ -431,67 +466,35 @@ drop Constant vtsize \ vtable size
 
 const Create ???
 
-: one-head? ( addr -- f )
-\G heuristic check whether addr is a name token; may deliver false
-\G positives; addr must be a valid address
-    dup dup maxaligned <>
-    if
-        drop false exit \ heads are aligned
-    then
-    dup >f+c @ alias-mask and 0= >r
-    dup name>string dup $20 $1 within if
-        rdrop 2drop drop false exit \ realistically the name is short
-    then
-    bounds ?do \ should be a printable string
-	i c@ bl < if
-	    unloop rdrop drop false exit
-	then
-    loop
-    r> if \ check for valid aliases
-	@ dup forthstart here within
-	over ['] noop ['] lit-execute 1+ within or
-	over dup aligned = and
-	0= if
-	    drop false exit
-	then
-    then \ check for cfa - must be code field or primitive
-    dup synonym? swap
-    dup @ tuck 2 cells - = swap
-    docol:  ['] u#+ @ 1+ within or or ;
+: vt? ( vt -- flag )
+    \G check if a vt is actually one
+    dup vttemplate = IF  drop true  EXIT  THEN
+    >r  vtable-list
+    BEGIN  @ dup  WHILE
+	    dup r@ = IF  rdrop drop true  EXIT  THEN
+    REPEAT  rdrop ;
 
-: head? ( addr -- f )
-\G heuristic check whether addr is a name token; may deliver false
-\G positives; addr must be a valid address; returns 1 for
-\G particularly unsafe positives
-    \ we follow the link fields and check for plausibility; two
-    \ iterations should catch most false addresses: on the first
-    \ iteration, we may get an xt, on the second a code address (or
-    \ some code), which is typically not in the dictionary.
-    \ we added a third iteration for working with code and ;code words.
-    3 0 do
-	dup one-head? 0= if
-	    drop false unloop exit
-	endif
-	dup >link @ dup 0= if
-	    2drop 1 unloop exit
-	else
-	    dup rot forthstart within if
-		drop false unloop exit
-	    then
-	then
-    loop
-    drop true ;
+: xt? ( xt -- f )
+    \G check for xt - must be code field or primitive
+    dup in-dictionary? IF
+	dup >body dup maxaligned = IF
+	    dup >namevt @ vt? IF
+		dup @ tuck body> = swap
+		docol:  ['] u#+ @ 1+ within or  EXIT
+	    THEN
+	THEN
+    THEN
+    drop false ;
 
 : >head-noprim ( xt -- nt ) \ gforth  to-head-noprim
-    \ also heuristic
-    dup head? 0= IF  drop ['] ???  THEN ;
+    dup xt? 0= IF  drop ['] ???  THEN ;
 
-cell% 2* 0 0 field >body ( xt -- a_addr ) \ core to-body
+cell% 0 0 field >body ( xt -- a_addr ) \ core to-body
 \G Get the address of the body of the word represented by @i{xt} (the
 \G address of the word's data field).
 drop drop
 
-cell% -2 * 0 0 field body> ( xt -- a_addr )
+cell% -1 * 0 0 field body> ( xt -- a_addr )
     drop drop
 
 ' @ alias >code-address ( xt -- c_addr ) \ gforth
@@ -502,17 +505,10 @@ cell% -2 * 0 0 field body> ( xt -- a_addr )
 \G @i{a-addr} is the start of the Forth code after the @code{DOES>};
 \G Otherwise @i{a-addr} is 0.
     dup @ dodoes: = if
-	cell+ @
-    else dup @ dodoesxt: = if
-            cell+ @ >body \ >body in case the result is used for does-code!
-        else
-            dup @ doextra: = IF
-                >namevt @ >vtextra @
-            ELSE
-                drop 0
-            THEN
-        then
-    endif ;
+	>namevt @ >vtextra @ >body
+    else
+	drop 0
+    then ;
 
 ' ! alias code-address! ( c_addr xt -- ) \ gforth
 \G Create a code field with code address @i{c-addr} at @i{xt}.
@@ -521,70 +517,23 @@ cell% -2 * 0 0 field body> ( xt -- a_addr )
     \ for implementing DOES> and ;ABI-CODE, maybe :
     \ code-address is stored at cfa, a-addr at cfa+cell
     over !  >namevt @ >vtextra ! ;
-    
-: does-code! ( a-addr xt -- ) \ gforth
-\G Create a code field at @i{xt} for a child of a @code{DOES>}-word;
-\G @i{a-addr} is the start of the Forth code after @code{DOES>}.
-    dodoes: over ! cell+ ! ;
-\ after eliminating dodoes:, this changes to
-\   body> doesxt-code! ;
 
-: doesxt-code! ( xt1 xt2 -- ) \ gforth
-\G Create a code field at @i{xt2} for a child of a
-\G @code{SET-DOES>}-word; afterwards, when @i{xt2} is run, its body
-\G address is pushed and @i{xt1} is run.  Note: This changes only the
-\G code field, for correctness you also need to change the compiler
-    dodoesxt: over ! cell+ ! ;
-
-: extra-code! ( a-addr xt -- ) \ gforth
-\G Create a code field at @i{xt} for a child of a @code{EXTRA>}-word;
-\G @i{a-addr} is the start of the Forth code after @code{EXTRA>}.
-    doextra: any-code! ;
+: does-code! ( xt1 xt2 -- ) \ gforth
+\G Create a code field at @i{xt2} for a child of a @code{DOES>}-word;
+\G @i{xt1} is the execution token of the assigned Forth code.
+    dodoes: any-code! ;
 
 2 cells constant /does-handler ( -- n ) \ gforth
 \G The size of a @code{DOES>}-handler (includes possible padding).
 
-: sfind ( c-addr u -- 0 / xt +-1  ) \ gforth-obsolete
-    find-name dup
-    if ( nt )
-	state @
-	if
-	    (name>comp)
-	else
-	    (name>intn)
-	then
-   then ;
-
-: find ( c-addr -- xt +-1 | c-addr 0 ) \ core,search
-    \G Search all word lists in the current search order for the
-    \G definition named by the counted string at @i{c-addr}.  If the
-    \G definition is not found, return 0. If the definition is found
-    \G return 1 (if the definition has non-default compilation
-    \G semantics) or -1 (if the definition has default compilation
-    \G semantics).  The @i{xt} returned in interpret state represents
-    \G the interpretation semantics.  The @i{xt} returned in compile
-    \G state represented either the compilation semantics (for
-    \G non-default compilation semantics) or the run-time semantics
-    \G that the compilation semantics would @code{compile,} (for
-    \G default compilation semantics).  The ANS Forth standard does
-    \G not specify clearly what the returned @i{xt} represents (and
-    \G also talks about immediacy instead of non-default compilation
-    \G semantics), so this word is questionable in portable programs.
-    \G If non-portability is ok, @code{find-name} and friends are
-    \G better (@pxref{Name token}).
-    dup count sfind dup
-    if
-	rot drop
-    then ;
-
 \ ticks in interpreter
 
 : '-error ( nt -- nt )
-    dup r:fail = -#13 and throw
-    dup >namevt @ >vtlit, @ ['] noop <> -#2053 and throw ;
+    dup rectype-null = #-13 and throw
+    rectype-name  <> #-2053 and throw ;
 
 : (') ( "name" -- nt ) \ gforth
-    parse-name name-too-short? recognize '-error ;
+    parse-name name-too-short? forth-recognizer recognize '-error ;
 
 : '    ( "name" -- xt ) \ core	tick
     \g @i{xt} represents @i{name}'s interpretation
@@ -623,13 +572,17 @@ Defer before-line ( -- ) \ gforth
 \ called before the text interpreter parses the next line
 ' noop IS before-line
 
+defer int-execute ( ... xt -- ... )
+\ like EXECUTE, but restores and saves ERRNO if present
+' execute IS int-execute
+
 : interpret1 ( ... -- ... )
     rp@ backtrace-rp0 !
     [ has? EC 0= [IF] ] before-line [ [THEN] ]
     BEGIN
 	?stack [ has? EC 0= [IF] ] before-word [ [THEN] ] parse-name dup
     WHILE
-	parser1 execute
+	parser1 int-execute
     REPEAT
     2drop ;
     
@@ -680,8 +633,15 @@ Defer before-line ( -- ) \ gforth
 
 Defer 'quit
 Defer .status
+defer prompt
 
-: prompt        state @ IF ."  compiled" EXIT THEN ."  ok" ;
+: color-execute ( xt x-color -- ... ) \ gforth
+    \G execute a xt using color
+    attr! catch default-color attr! throw ;
+
+: (prompt) ( -- )
+    ."  ok" ;
+' (prompt) is prompt
 
 : (quit) ( -- )
     \ exits only through THROW etc.
@@ -693,7 +653,7 @@ Defer .status
 	    \ if stderr does not work either, already DoError causes a hang
 	    -2 (bye)
 	endif [ [THEN] ]
-	get-input  WHILE
+	get-input-colored WHILE
 	    interpret prompt
     REPEAT
     bye ;
@@ -837,7 +797,7 @@ defer reset-dpp
 : (DoError) ( throw-code -- )
     dup -1 = IF  drop EXIT  THEN \ -1 is abort, no error message!
     [ has? os [IF] ]
-	>stderr err-color attr!
+	>stderr error-color attr!
 	[ [THEN] ]
     input-error-data 2 .error-frame
     error-stack $@len 0 ?DO
@@ -846,7 +806,7 @@ defer reset-dpp
     /error +LOOP
     drop 
     dobacktrace
-    default-color attr!
+    default-color attr! endif? on
   reset-dpp ;
 
 ' (DoError) IS DoError
@@ -887,7 +847,7 @@ defer reset-dpp
 
 : gforth ( -- )
     ." Gforth " version-string type 
-    ." , Copyright (C) 1995-2016 Free Software Foundation, Inc." cr
+    ." , Copyright (C) 1995-2018 Free Software Foundation, Inc." cr
     ." Gforth comes with ABSOLUTELY NO WARRANTY; for details type `license'"
 [ has? os [IF] ]
      cr ." Type `help' for basic help"
@@ -904,13 +864,10 @@ defer process-args
 
 ' gforth IS bootmessage
 
-has? os [IF]
 Defer 'cold ( -- ) \ gforth  tick-cold
 \G Hook (deferred word) for things to do right before interpreting the
 \G OS command-line arguments.  Normally does some initializations that
 \G you also want to perform.
-:noname default-recognizer $boot ; IS 'cold
-[THEN]
 
 : cold ( -- ) \ gforth
 [ has? backtrace [IF] ]
@@ -945,6 +902,9 @@ has? new-input 0= [IF]
 [THEN]
 
 : boot ( path n **argv argc -- )
+    threading-method 1 = if
+	['] , is compile,
+    then
 [ has? no-userspace 0= [IF] ]
     next-task 0= IF  main-task up!
     ELSE
@@ -964,10 +924,7 @@ has? new-input 0= [IF]
 	ram-mirror ram-size  THEN  ram-start swap move
 [ [THEN] ]
     sp@ sp0 !
-[ has? peephole [IF] ]
-    \ only needed for greedy static superinstruction selection
-    \ primtable prepare-peephole-table TO peeptable
-[ [THEN] ]
+    boot-strings
 [ has? new-input [IF] ]
     current-input off
 [ [THEN] ]

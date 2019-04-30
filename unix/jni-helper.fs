@@ -2,7 +2,7 @@
 
 require unix/jni-tools.fs
 
-also android also jni
+also android also jni definitions
 
 app obj @ Value clazz
 
@@ -13,34 +13,50 @@ gforth-class:
 
 \ jni-sfield: INPUT_METHOD_SERVICE INPUT_METHOD_SERVICE Ljava/lang/String;
 \ jni-sfield: POWER_SERVICE POWER_SERVICE Ljava/lang/String;
-: INPUT_METHOD_SERVICE js" input_method" ;
-: POWER_SERVICE        js" power" ;
-: NOTIFICATION_SERVICE js" notification" ;
+
+jni-method: get_SDK get_SDK ()I
+: SDK_INT clazz .get_SDK ;
 
 jni-method: getSystemService getSystemService (Ljava/lang/String;)Ljava/lang/Object;
 jni-method: getWindow getWindow ()Landroid/view/Window;
 jni-method: getResources getResources ()Landroid/content/res/Resources;
 jni-method: showIME showIME ()V
 jni-method: hideIME hideIME ()V
-jni-method: get_SDK get_SDK ()I
-jni-method: setEditLine setEditLine (Ljava/lang/String;I)V
+jni-method: setEditLine setEditLine (Ljava/lang/String;II)V
 jni-method: set_alarm set_alarm (J)V
 jni-method: screen_on screen_on (I)V
 jni-field: clipboardManager clipboardManager Landroid/text/ClipboardManager;
 jni-field: connectivityManager connectivityManager Landroid/net/ConnectivityManager;
+jni-field: notificationManager notificationManager Landroid/app/NotificationManager;
+SDK_INT 26 >= [IF]
+    jni-field: notificationChannel notificationChannel Landroid/app/NotificationChannel;
+[THEN]
+jni-field: inputMethodManager inputMethodManager Landroid/view/inputmethod/InputMethodManager;
 jni-field: gforthintent gforthintent Landroid/app/PendingIntent;
 jni-field: hideprog hideprog Ljava/lang/Runnable;
 jni-field: gforth-handler handler Landroid/os/Handler;
 jni-field: rshowstatus rshowstatus Ljava/lang/Runnable;
 jni-field: rhidestatus rhidestatus Ljava/lang/Runnable;
-
-: SDK_INT clazz .get_SDK ;
+jni-field: rkeepscreenon rkeepscreenon Ljava/lang/Runnable;
+jni-field: rkeepscreenoff rkeepscreenoff Ljava/lang/Runnable;
+jni-field: rsecurescreenon rsecurescreenon Ljava/lang/Runnable;
+jni-field: rsecurescreenoff rsecurescreenoff Ljava/lang/Runnable;
+jni-field: notifyer notifyer Ljava/lang/Runnable;
+jni-field: startbrowser startbrowser Ljava/lang/Runnable;
+jni-field: args0 args0 Ljava/lang/String;
+jni-field: argf0 argf0 D
+jni-field: argj0 argj0 J
+jni-field: argnotify argnotify Landroid/app/Notification;
+jni-field: cameraPath cameraPath Ljava/lang/String;
 
 jni-class: android/os/Handler
 jni-method: post post (Ljava/lang/Runnable;)Z
 
 : post-it ( runable-xt -- )
     clazz >o execute gforth-handler >o post ref> drop o> ;
+
+jni-class: android/os/SystemClock
+jni-static: uptimeMillis uptimeMillis ()J
 
 jni-class: android/app/Activity
 jni-method: getWindowManager getWindowManager ()Landroid/view/WindowManager;
@@ -52,6 +68,7 @@ jni-class: android/view/Display
 jni-method: getRotation getRotation ()I
 SDK_INT 13 >= [IF]
     jni-method: getSizeD getSize (Landroid/graphics/Point;)V
+    jni-method: getRectSize getRectSize (Landroid/graphics/Rect;)V
 [ELSE]
     jni-method: getWidth getWidth ()I
     jni-method: getHeight getHeight ()I
@@ -62,6 +79,13 @@ jni-class: android/graphics/Point
 jni-new: newPoint ()V
 jni-field: x x I
 jni-field: y y I
+
+jni-class: android/graphics/Rect
+jni-new: newRect ()V
+jni-field: top top I
+jni-field: left left I
+jni-field: right right I
+jni-field: bottom bottom I
 
 jni-class: android/util/DisplayMetrics
 jni-new: newDisplayMetrics ()V
@@ -76,6 +100,9 @@ jni-field: scaledDensity scaledDensity F
 jni-class: android/view/inputmethod/InputMethodManager
 
 jni-method: toggleSoftInput toggleSoftInput (II)V
+
+jni-class: android/view/View
+jni-method: getWindowVisibleDisplayFrame getWindowVisibleDisplayFrame (Landroid/graphics/Rect;)V
 
 jni-class: android/view/Window
 jni-method: getDecorView getDecorView ()Landroid/view/View;
@@ -106,6 +133,7 @@ jni-method: getDownTime getDownTime ()J
 jni-method: getMetaState getMetaState ()I
 jni-method: getSize getSize (I)F
 jni-method: getPressure getPressure (I)F
+jni-method: getButtonState getButtonState ()I
 
 jni-class: java/util/List
 
@@ -124,9 +152,13 @@ jni-method: isConnected isConnected ()Z
 SDK_INT 11 >= [IF]
     jni-class: android/app/Notification$Builder
     jni-new: newNotification.Builder (Landroid/content/Context;)V
+    SDK_INT 20 >= [IF]
+	jni-method: setGroup setGroup (Ljava/lang/String;)Landroid/app/Notification$Builder;
+    [THEN]
     jni-method: setContentTitle setContentTitle (Ljava/lang/CharSequence;)Landroid/app/Notification$Builder;
     jni-method: setContentText setContentText (Ljava/lang/CharSequence;)Landroid/app/Notification$Builder;
     jni-method: setTicker setTicker (Ljava/lang/CharSequence;)Landroid/app/Notification$Builder;
+    jni-method: setNumber setNumber (I)Landroid/app/Notification$Builder;
     SDK_INT 21 >= [IF]
 	jni-method: addPerson addPerson (Ljava/lang/String;)Landroid/app/Notification$Builder;
     [THEN]
@@ -141,10 +173,21 @@ SDK_INT 11 >= [IF]
     [ELSE]
 	jni-method: build getNotification ()Landroid/app/Notification;
     [THEN]
+    SDK_INT 26 >= [IF] \ need channels
+	jni-new: newNotification.Builder+Id (Landroid/content/Context;Ljava/lang/String;)V
+
+	jni-class: android/app/NotificationChannel
+	jni-new: newNotificationChannel (Ljava/lang/String;Ljava/lang/CharSequence;I)V
+	jni-method: setDescription setDescription (Ljava/lang/String;)V
+	jni-method: setName setName (Ljava/lang/CharSequence;)V
+    [THEN]
 [THEN]
 
 jni-class: android/app/NotificationManager
 jni-method: notify notify (ILandroid/app/Notification;)V
+SDK_INT 26 >= [IF] \ need channels
+    jni-method: createNotificationChannel createNotificationChannel (Landroid/app/NotificationChannel;)V
+[THEN]
 
 SDK_INT 10 <= [IF] \ 2.3.x uses a different clipboard manager
     jni-class: android/text/ClipboardManager
@@ -196,16 +239,12 @@ Variable kbflag     kbflag off
 
 : hidekb ( -- )  clazz >o hideIME o> kbflag off ;
 : showkb ( -- )  clazz >o showIME o> kbflag on ;
-: hidestatus ( -- )
-    ['] rhidestatus post-it ;
-: showstatus ( -- )
-    ['] rshowstatus post-it ;
 
 : togglekb ( -- )
     kbflag @ IF  hidekb  ELSE  showkb  THEN ;
 
 SDK_INT 10 u<= [IF]
-    : getclip? ( -- addr u / 0 0 )
+    : clipboard@ ( -- addr u / 0 0 )
 	clazz .clipboardManager >o
 	hasText IF
 	    getText >o toString jstring>sstring ref>
@@ -213,7 +252,7 @@ SDK_INT 10 u<= [IF]
     : setclip ( addr u -- )
 	make-jstring clazz .clipboardManager >o setText ref> ;
 [ELSE]
-    : getclip? ( -- addr u / 0 0 )
+    : clipboard@ ( -- addr u / 0 0 )
 	clazz .clipboardManager >o
 	hasPrimaryClip IF
 	    getPrimaryClip >o
@@ -233,10 +272,10 @@ SDK_INT 10 u<= [IF]
 \	ref> ;
 [THEN]
 : paste ( -- )
-    getclip? dup IF  paste$ $! ctrl Y inskey  ELSE  2drop  THEN ;
-: android-paste! ( addr u -- )
+    clipboard@ dup IF  paste$ $! ctrl Y inskey  ELSE  2drop  THEN ;
+: clipboard! ( addr u -- )
     2dup defers paste! setclip ;
-' android-paste! is paste!
+' clipboard! is paste!
 
 0 [IF]
 jni-class: android/os/PowerManager
@@ -264,4 +303,4 @@ $00000006 Constant SCREEN_DIM_WAKE_LOCK
 : screen-bright ( -- )  >bright-wl bright-wl >o wl-release o> ;
 [THEN]
 
-previous previous
+previous previous definitions

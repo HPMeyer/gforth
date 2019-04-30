@@ -11,6 +11,7 @@ extern struct _IO_FILE *stderr;
 #endif
 %}
 
+#define SWIG_FORTH_GFORTH_LIBRARY "c"
 // #define SWIG_FORTH_OPTIONS ""
 
 #if defined(host_os_linux_android) || defined(host_os_linux_androideabi)
@@ -34,7 +35,7 @@ extern struct _IO_FILE *stderr;
 #define JNINativeInterface_ JNINativeInterface
 #define JNIInvokeInterface_ JNIInvokeInterface
 
-// exec: sed -e s/JNINativeInterface-/JNIEnv-/g -e s/JNIInvokeInterface-/JavaVM-/g -e 's/\(c-function .*\)/\\ \1/g' -e 's/\(ReleaseStringUTFChars.*\) a a s/\1 a a a/g' | grep -v '\.\.\. --'
+// exec: sed -e s/JNINativeInterface-/JNIEnv-/g -e s/JNIInvokeInterface-/JavaVM-/g -e 's/\(c-function .*\)/\\ \1/g' -e 's/\(ReleaseStringUTFChars.*\) a a s/\1 a a a/g' -e 's/s" c" add-lib/s" ((struct JNI:*(Cell*)(x.spx\[arg0])" ptr-declare $+\[]!/g' | grep -v '\.\.\. --'
 
 %apply char { jbyte, jboolean };
 %apply short { jshort, jchar };

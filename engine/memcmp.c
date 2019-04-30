@@ -1,6 +1,6 @@
 /* a memcmp implementation
 
-  Copyright (C) 1995,1998,2000,2003,2007,2014 Free Software Foundation, Inc.
+  Copyright (C) 1995,1998,2000,2003,2007,2014,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -18,6 +18,7 @@
   along with this program; if not, see http://www.gnu.org/licenses/.
 */
 
+#include "config.h"
 #include "forth.h"
 
 int memcmp(const void *s1, const void *s2, size_t n)

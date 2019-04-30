@@ -1,6 +1,6 @@
 \ High level floating point                            14jan94py
 
-\ Copyright (C) 1995,1997,2003,2004,2005,2006,2007,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1997,2003,2004,2005,2006,2007,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -61,32 +61,37 @@
 : f, ( f -- ) \ gforth
     \G Reserve data space for one floating-point number and store
     \G @i{f} in the space.
-    here 1 floats allot f! ;
-
-: comp-fval ( xt -- )  >body postpone Literal postpone f@ ;
-
-: fconstant  ( r "name" -- ) \ float f-constant
-    Create f, ['] comp-fval set-optimizer
-DOES> ( -- r )
-    f@ ;
-
-: fvalue! ( xt xt-deferred -- ) \ gforth  defer-store
-    >body f! ;
-opt: drop >body postpone ALiteral postpone f! ;
-
-: fvalue ( r "name" -- ) \ float-ext f-value
-    fconstant ['] fvalue! set-to ['] comp-fval set-optimizer ;
-
-: fdepth ( -- +n ) \ float f-depth
-    \G @i{+n} is the current number of (floating-point) values on the
-    \G floating-point stack.
-    fp0 @ fp@ - [ 1 floats ] Literal / ;
+    1 floats small-allot f! ;
 
 : FLiteral ( compilation r -- ; run-time -- r ) \ float f-literal
     \G Compile appropriate code such that, at run-time, @i{r} is placed
     \G on the (floating-point) stack. Interpretation semantics are undefined.
     here cell+ dup faligned <> IF  postpone noop  THEN
     postpone flit f, ;  immediate
+
+: opt-fcon ( xt -- )  >body f@ postpone FLiteral ;
+: opt-fval ( xt -- )  >body postpone Literal postpone f@ ;
+
+: fconstant  ( r "name" -- ) \ float f-constant
+    Create f,
+    ['] f@ set-does>
+    ['] opt-fcon set-optimizer ;
+
+: f+! ( r addr -- ) dup f@ f+ f! ;
+
+Create f!-table ' f! , ' f+! ,
+
+to: fvalue-to ( r xt-fvalue -- ) \ gforth
+    >body f!-table to-!exec ;
+to-opt: >body postpone ALiteral f!-table to-!, ;
+
+: fvalue ( r "name" -- ) \ float-ext f-value
+    fconstant ['] fvalue-to set-to ['] opt-fval set-optimizer ;
+
+: fdepth ( -- +n ) \ float f-depth
+    \G @i{+n} is the current number of (floating-point) values on the
+    \G floating-point stack.
+    fp0 @ fp@ - [ 1 floats ] Literal / ;
 
 &15 Value precision ( -- u ) \ float-ext
 \G @i{u} is the number of significant digits currently used by
@@ -184,16 +189,13 @@ si-prefixes count 2/ + Constant zero-exp
 : prefix-number  sfnumber ;
 [THEN]
 
-: flit, postpone Fliteral ;
-' noop ' flit, ' flit, recognizer r:float
+' noop ' fliteral ' fliteral rectype: rectype-float
 
-: rec:float ( addr u -- r r:float | r:fail )
+: rec-float ( addr u -- r rectype-float | rectype-null )
     \G recognize floating point numbers
-    prefix-number r:float r:fail rot select ;
+    prefix-number rectype-float rectype-null rot select ;
 
-' rec:float
-get-recognizers
-1+ set-recognizers
+' rec-float forth-recognizer >back
 
 : fvariable ( "name" -- ) \ float f-variable
     Create 0.0E0 f, ;
@@ -257,7 +259,10 @@ set-current
 	fnegate f~rel
     THEN ;
 
--0e 8 0 [do] fp@ [i] + c@ $80 = [if] [i] constant fsign-offset [then] [loop]
+-0e
+fp@ 0 + c@ $80 = [if] 0 constant fsign-offset [then]
+fp@ 7 + c@ $80 = [if] 7 constant fsign-offset [then]
+fdrop
 
 : fcopysign ( r1 r2 -- r3 ) \ gforth
 \G r3 takes its absolute value from r1 and its sign from r2

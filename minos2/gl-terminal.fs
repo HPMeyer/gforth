@@ -1,6 +1,6 @@
 \ OpenGL terminal
 
-\ Copyright (C) 2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -21,17 +21,24 @@
 
 \ :noname source type cr stdout flush-file throw ; is before-line
 
+require unix/pthread.fs
 require gl-helper.fs
 
-also [IFDEF] android android [THEN]
+also opengl also [IFDEF] android android [THEN]
 
 GL_FRAGMENT_SHADER shader: TerminalShader
 #precision
 uniform vec3 u_LightPos;        // The position of the light in eye space.
-uniform sampler2D u_Texture;    // The input texture.
+uniform sampler2D u_Texture0;   // The input texture (font)
+uniform sampler2D u_Texture1;   // The character input
+uniform sampler2D u_Texture2;   // the available colors
+uniform sampler2D u_Texture3;   // the available colors
 uniform float u_Ambient;        // ambient lighting level
-uniform sampler2D u_Charmap;    // The character map
-uniform sampler2D u_Colormap;   // the available colors
+uniform float u_Saturate;       // ambient lighting level
+uniform vec4 u_Coloradd0;       // color bias for texture
+uniform vec4 u_Coloradd1;       // color bias for texture
+uniform vec4 u_Coloradd2;       // color bias for texture
+uniform vec4 u_Coloradd3;       // color bias for texture
 uniform vec2 u_texsize;         // the screen texture size
  
 varying vec3 v_Position;        // Interpolated position for this fragment.
@@ -39,52 +46,56 @@ varying vec4 v_Color;           // This is the color from the vertex shader inte
                                 // triangle per fragment.
 varying vec3 v_Normal;          // Interpolated normal for this fragment.
 varying vec2 v_TexCoordinate;   // Interpolated texture coordinate per fragment.
+varying vec2 v_Extras;          // extra attributes passed through
  
 // The entry point for our fragment shader.
 void main()
 {
-    // Will be used for attenuation.
-    float distance = length(u_LightPos - v_Position);
- 
-    // Get a lighting direction vector from the light to the vertex.
-    vec3 lightVector = normalize(u_LightPos - v_Position);
- 
-    // Calculate the dot product of the light vector and vertex normal. If the normal and light vector are
-    // pointing in the same direction then it will get max illumination.
-    float diffuse = max(dot(v_Normal, lightVector), 0.0);
- 
-    // Add attenuation.
-    diffuse = diffuse * (1.0 / (1.0 + (0.10 * distance)));
- 
-    // Add ambient lighting
-    diffuse = (diffuse * ( 1.0 - u_Ambient )) + u_Ambient;
- 
-    vec4 chartex = texture2D(u_Charmap, v_TexCoordinate);
-    vec4 fgcolor = texture2D(u_Colormap, vec2(chartex.z, 0.));
-    vec4 bgcolor = texture2D(u_Colormap, vec2(chartex.w, 0.));
+    vec4 chartex = texture2D(u_Texture1, v_TexCoordinate);
+    vec4 fgcolor = texture2D(u_Texture2, vec2(chartex.z, 0.));
+    vec4 bgcolor = texture2D(u_Texture2, vec2(chartex.w, 0.));
     vec2 charxy = chartex.xy + vec2(0.0625, 0.125)*u_texsize*mod(v_TexCoordinate, 1.0/u_texsize);
     // mix background and foreground colors by character ROM alpha value
     // and multiply by diffuse
-    vec4 pixel = texture2D(u_Texture, charxy);
-    gl_FragColor = vec4(diffuse, diffuse, diffuse, 1.0)*(bgcolor*(1.0-pixel.a) + fgcolor*pixel.a);
-    // gl_FragColor = diffuse*mix(bgcolor, fgcolor, pixel.a);
-    // gl_FragColor = (v_Color * diffuse * pixcolor);
+    vec4 pixel = texture2D(u_Texture0, charxy);
+    vec4 col = bgcolor*(1.0-pixel.a) + fgcolor*pixel.a;
+    if(u_Saturate != 1.0) {
+        float mid = (col.r + col.g + col.b) * 0.333333333333;
+        vec3 mid3 = vec3(mid, mid, mid);
+        col.rgb = (u_Saturate * (col.rgb - mid3)) + mid3;
+    }
+    if(u_Ambient != 1.0) {
+        // Will be used for attenuation.
+        float distance = length(u_LightPos - v_Position);
+ 
+        // Get a lighting direction vector from the light to the vertex.
+        vec3 lightVector = normalize(u_LightPos - v_Position);
+ 
+        // Calculate the dot product of the light vector and vertex normal. If the normal and light vector are
+        // pointing in the same direction then it will get max illumination.
+        float diffuse = max(dot(v_Normal, lightVector), 0.0);
+        diffuse = diffuse * diffuse;
+ 
+        // Add attenuation.
+        diffuse = diffuse * (1.0 / (1.0 + (0.10 * distance * distance)));
+ 
+        // Add ambient lighting
+        diffuse = (diffuse * (1.0 - u_Ambient)) + u_Ambient;
+ 
+        gl_FragColor = vec4(diffuse, diffuse, diffuse, 1.0)*col;
+    } else {
+        gl_FragColor = col;
+    }
 }
 
-0 Value Charmap
-0 Value Colormap
-0 value texsize
+0 Value texsize
 0 Value terminal-program
 
 : create-terminal-program ( -- program )
     ['] VertexShader ['] TerminalShader create-program ;
 
 : terminal-init { program -- } program init
-    program "u_Charmap\0" drop glGetUniformLocation to Charmap
-    program "u_Colormap\0" drop glGetUniformLocation to Colormap
-    program "u_texsize\0" drop glGetUniformLocation to texsize
-    Charmap 1 glUniform1i
-    Colormap 2 glUniform1i ;
+    program "u_texsize"  glGetUniformLocation to texsize ;
 
 tex: chars-tex
 tex: video-tex
@@ -92,26 +103,26 @@ tex: color-tex
 
 \ Variables and constants
 
-[IFUNDEF] l, ' , Alias l, [THEN]
+: le-l, ( n -- )  here 4 allot le-l! ;
 
 Create color-matrix \ vt100 colors
 \ RGBA, but this is little endian, so write ABGR ,
-$ff000000 l, \ Black
-$ff3030ff l, \ Red
-$ff20ff20 l, \ Green
-$ff00ffff l, \ Yellow
-$ffff6020 l, \ Blue - complete blue is too dark
-$ffff00ff l, \ Magenta
-$ffffff00 l, \ Cyan
-$ffffffff l, \ White
-$ff404040 l, \ dimm Black
-$ff4040bf l, \ dimm Red
-$ff40bf40 l, \ dimm Green
-$ff40bfbf l, \ dimm Yellow
-$ffbf4040 l, \ dimm Blue
-$ffbf40bf l, \ dimm Magenta
-$ffbfbf40 l, \ dimm Cyan
-$ffbfbfbf l, \ dimm White
+$ff000000 le-l, \ Black
+$ff3030ff le-l, \ Red
+$ff20ff20 le-l, \ Green
+$ff00ffff le-l, \ Yellow
+$ffff6020 le-l, \ Blue - complete blue is too dark
+$ffff00ff le-l, \ Magenta
+$ffffff00 le-l, \ Cyan
+$ffffffff le-l, \ White
+$ff404040 le-l, \ dimm Black
+$ff4040bf le-l, \ dimm Red
+$ff40bf40 le-l, \ dimm Green
+$ff40bfbf le-l, \ dimm Yellow
+$ffbf4040 le-l, \ dimm Blue
+$ffbf40bf le-l, \ dimm Magenta
+$ffbfbf40 le-l, \ dimm Cyan
+$ffbfbfbf le-l, \ dimm White
 
 : term-load-textures ( addr u -- )
     chars-tex load-texture 2drop linear
@@ -120,25 +131,33 @@ $ffbfbfbf l, \ dimm White
     GL_TEXTURE0 glActiveTexture ;
 
 Variable color-index
-Variable err-color-index
-bl dup $70 and 5 lshift or $F0F and 4 lshift
-dup color-index ! err-color-index !
-Variable std-bg
+Variable error-color-index
+$704000 dup color-index ! error-color-index !
+Variable std-bg standard:field
+1 pad ! pad c@ [IF] \ little endian
+    2 cfield: fg-field
+    cfield: bg-field drop
+[ELSE]
+    cell 3 - cfield: bg-field
+    cfield: fg-field drop
+[THEN]
+
+$8F00 Value gl-default-color \ real default color
 
 : ?default-fg ( n -- color ) dup 6 <= IF
-	drop default-color fg>  THEN  $F xor ;
+	drop gl-default-color fg>  THEN  $F xor ;
 : ?default-bg ( n -- color ) dup 6 <= IF
-	drop default-color bg>  THEN  $F xor ;
+	drop gl-default-color bg>  THEN  $F xor ;
 : fg! ( index -- )
     dup 0= IF  drop  EXIT  THEN  ?default-fg
-    4 lshift color-index 2 + c! ;
+    4 lshift color-index fg-field c! ;
 : bg! ( index -- )
     dup 0= IF  drop  EXIT  THEN  ?default-bg
-    4 lshift color-index 3 + c! ;
+    4 lshift color-index bg-field c! ;
 : err-fg! ( index -- ) ?default-fg
-    4 lshift err-color-index 2 + c! ;
+    4 lshift error-color-index fg-field c! ;
 : err-bg! ( index -- ) ?default-bg
-    4 lshift err-color-index 3 + c! ;
+    4 lshift error-color-index bg-field c! ;
 : bg>clear ( index -- ) $F xor
     $F and sfloats color-matrix +
     count s>f $FF fm/
@@ -147,16 +166,15 @@ Variable std-bg
     c@    s>f $FF fm/ glClearColor ;
 
 : std-bg! ( index -- )  dup bg! dup std-bg ! bg>clear ;
+Black White white? [IF] swap [THEN] fg! bg!
 
-: >extra-colors-bg ( -- ) >bg
-    err-color  $F0F and over or to err-color
-    info-color $F0F and over or to info-color
-    warn-color $F0F and over or to warn-color drop ;
-
-: >white White std-bg! White err-bg! Black fg! Red err-fg!
-    White >extra-colors-bg White >bg Black >fg or to default-color ;
-: >black Black std-bg! Black err-bg! White fg! Red err-fg!
-    Black >extra-colors-bg Black >bg White >fg or to default-color ;
+: >white white-colors White std-bg! White err-bg! Black fg! Red err-fg!
+    White >bg Black >fg or to gl-default-color
+    $70004000 dup color-index ! error-color-index ! ;
+: >black black-colors Black std-bg! Black err-bg! White fg! Red err-fg!
+    Black >bg White >fg or to gl-default-color
+    $704000 dup color-index ! error-color-index ! ;
+[IFDEF] android >black [THEN]
 
 256 Value videocols
 0   Value videorows
@@ -220,7 +238,7 @@ $20 Value minpow2#
 	to videomem
 	color-index @
 	videomem r> r> /string bounds U+DO
-	    dup I l!
+	    dup I le-l!
 	[ 1 sfloats ]L +LOOP drop
     THEN ;
 
@@ -234,16 +252,16 @@ $20 Value minpow2#
     show-rows nextpow2 >r
     videomem scroll-y @ r@ + videorows umin r@ -
     videocols * sfloats +
-    videocols r> rgba-map wrap nearest
+    videocols r> rgba-map wrap-texture nearest
 
-    v0 >rectangle >texcoords
+    vi0 >rectangle >texcoords
     GL_TEXTURE0 glActiveTexture
     chars-tex
-    i0 0 i, 1 i, 2 i, 0 i, 2 i, 3 i,
+    0 i, 1 i, 2 i, 0 i, 2 i, 3 i,
     GL_TRIANGLES draw-elements ;
 
 : screen-scroll ( r -- )  fdup floor fdup f>s scroll-y ! f-
-    f2* rows fm/ >y-pos  need-sync on ;
+    f2* rows fm/ >y-pos  +sync ;
 
 : gl-char' ( -- addr )
     gl-xy 2@ videocols * + sfloats videomem + ;
@@ -255,7 +273,7 @@ Variable gl-emit-buf
 : gl-cr ( -- )
     gl-lineend @ 0= IF
 	gl-xy 2@ 1+ nip 0 swap gl-xy 2! THEN
-    resize-screen  need-sync on  out off ;
+    resize-screen  +sync  out off ;
 
 : xchar>glascii ( xchar -- 0..7F )
     case
@@ -312,42 +330,46 @@ Variable gl-emit-buf
     THEN  { n m }
 
     n out +!
-    resize-screen  need-sync on
+    resize-screen  +sync
     dup $70 and 5 lshift or $F0F and 4 lshift r> $FFFF0000 and or
     n 0 ?DO
-	dup gl-char' l!
-	gl-xy 2@ >r 1+ dup cols = dup gl-lineend !
+	dup gl-char' le-l!
+	gl-xy 2@ >r 1+ dup cols u>= dup gl-lineend !
 	IF  drop 0 r> 1+ gl-xy 2! resize-screen
 	ELSE  r> gl-xy 2!  THEN  m +
     LOOP  drop ;
 
-: gl-emit ( char -- )  color-index @ (gl-emit) ;
+Sema gl-sema
+
+: gl-emit ( char -- ) [: color-index @ (gl-emit) ;] gl-sema c-section ;
 : gl-emit-err ( char -- )
     dup (err-emit) \ errors also go to the error log
-    err-color-index @ (gl-emit) ;
+    [: error-color-index @ (gl-emit) ;] gl-sema c-section ;
 : gl-cr-err ( -- )
     #lf (err-emit)  gl-cr ;
 
 : gl-type ( addr u -- )
-    bounds ?DO  I c@ gl-emit  LOOP ;
+    [: bounds ?DO  I c@ color-index @ (gl-emit)  LOOP ;] gl-sema c-section ;
 
-: gl-type-err ( addr u -- )
-    bounds ?DO  I c@ gl-emit-err  LOOP ;
+: gl-type-err ( addr u -- )  2dup (err-type)
+    [: bounds ?DO  I c@ error-color-index @ (gl-emit)  LOOP ;] gl-sema c-section ;
 
-: gl-page ( -- )  0 0 gl-atxy  0 to videorows  0 to actualrows
+: gl-page ( -- ) [: 0 0 gl-atxy  0 to videorows  0 to actualrows
     0e screen-scroll  0e fdup scroll-source f! scroll-dest f!
-    resize-screen need-sync on ;
+    resize-screen +sync ;] gl-sema c-section ;
 
 : ?invers ( attr -- attr' ) dup invers and IF
-    dup $F00 and 4 rshift over $F0 and 4 lshift or swap $7 and or  THEN ;
+    dup $F000 and 4 rshift over $F00 and 4 lshift or swap $FF and or  THEN ;
 : >default ( attr -- attr' )
     dup  bg> 6 <= $F and >bg
     over fg> 6 <= $F and >fg or
-    default-color -rot mux ;
+    gl-default-color -rot mux ;
 : gl-attr! ( attribute -- )
-    dup attr ! >default ?invers  dup bg> bg! fg> fg! ;
+    [: dup attr ! >default ?invers  dup bg> bg! fg> fg! ;]
+    gl-sema c-section ;
 : gl-err-attr! ( attribute -- )
-    dup attr ! >default ?invers  dup bg> err-bg! fg> err-fg! ;
+    [: dup attr ! >default ?invers  dup bg> err-bg! fg> err-fg! ;]
+    gl-sema c-section ;
 
 4e FConstant scroll-deltat
 : >scroll-pos ( -- 0..1 )
@@ -366,16 +388,17 @@ Variable gl-emit-buf
     videomem 0= IF  resize-screen  THEN
     std-bg @ bg>clear clear
     terminal-program glUseProgram
+    unit-matrix MVPMatrix set-matrix
     gl-char' 2 + dup be-uw@ swap le-w!
     draw-now
     gl-char' 2 + dup be-uw@ swap le-w!
     sync ;
 
-: show-cursor ( -- )  need-show @ 0= ?EXIT
+: show-cursor ( -- )  ?show 0= ?EXIT
     rows ( kbflag @ IF  dup 10 / - 14 -  THEN ) >r
     gl-xy @ scroll-y @ dup r@ + within 0= IF
        gl-xy @ 1+ r@ - 0 max s>f set-scroll
-    THEN  rdrop  need-show off ;
+    THEN  rdrop  -show ;
 
 [IFUNDEF] win : win app window @ ; [THEN]
 
@@ -387,16 +410,28 @@ Variable gl-emit-buf
 	newDisplayMetrics dup to metrics
 	clazz .getWindowManager .getDefaultDisplay .getMetrics ;
     
-    : screen-wh ( -- rw rh )
+    : screen-wh ( -- rw rh ) \ w h in mm
 	metrics ?dup-0=-IF  >metrics metrics  THEN >o
 	widthPixels  xdpi 1/f fm* 25.4e f*      \ width in mm
 	heightPixels ydpi 1/f fm* 25.4e f* o> ; \ height in mm
+    : screen-pwh ( -- w h ) \ w h in pixels
+	metrics ?dup-0=-IF  >metrics metrics  THEN >o
+	widthPixels heightPixels o> ;
 [ELSE]
-    also x11
-    : screen-wh ( -- rw rh )
-	dpy XDefaultScreenOfDisplay >r
-	r@ screen-mwidth  l@ s>f dpy-w @ r@ screen-width  l@ fm*/
-	r@ screen-mheight l@ s>f dpy-h @ r> screen-height l@ fm*/ ;
+    [IFDEF] x11
+	also x11
+	: screen-wh ( -- rw rh )
+	    dpy XDefaultScreenOfDisplay >r
+	    r@ Screen-mwidth  l@ s>f dpy-w @ r@ Screen-width  l@ fm*/
+	    r@ Screen-mheight l@ s>f dpy-h @ r> Screen-height l@ fm*/ ;
+	: screen-pwh ( -- w h ) \ w h in pixels
+	    dpy XDefaultScreenOfDisplay >r
+	    r@ Screen-width  l@
+	    r> Screen-height l@ ;
+    [ELSE]
+	: screen-wh ( -- rw rh )
+	    wl-metrics 2@ swap s>f s>f ;
+    [THEN]
 [THEN]
 previous
 
@@ -404,34 +439,52 @@ previous
 1e FValue default-scale
 
 : screen-diag ( -- rdiag )
-    screen-wh f**2 fswap f**2 f+ fsqrt ;   \ diagonal in inch
+    screen-wh f**2 fswap f**2 f+ fsqrt ;   \ diagonal in mm
 
-: scale-me ( -- )
+: terminal-scale-me ( -- )
     \ smart scaler, scales using square root relation
-    default-diag screen-diag f/ fsqrt default-scale f*
-    1/f 80 fdup fm* f>s to hcols 48 fm* f>s to vcols
-    resize-screen config-changed ;
+    level# @ 0= IF
+	default-diag screen-diag f/ fsqrt default-scale f*
+	1/f 80 fdup fm* f>s to hcols 48 fm* f>s to vcols
+	resize-screen config-changed screen->gl  THEN ;
 
-: gl-fscale ( f -- ) to default-scale scale-me ;
-: gl-scale ( n -- ) s>f gl-fscale ;
+Defer scale-me ' terminal-scale-me is scale-me
+
+[IFDEF] screen-xywh@
+    2Variable screen-xy
+    2Variable screen-wh
+[THEN]
 
 : config-changer ( -- )
-    getwh  >screen-orientation  form-chooser  scale-me  need-sync on ;
+[IFDEF] screen-xywh@
+    screen-xywh@ screen-wh 2! screen-xy 2!
+[THEN]
+    getwh  >screen-orientation  scale-me
+    form-chooser ;
 : ?config-changer ( -- )
-    need-config @ 0> IF
+    ?config IF
 	dpy-w @ dpy-h @ 2>r config-changer
-	dpy-w @ dpy-h @ 2r> d<> IF  winch? on  need-config off
-	ELSE  -1 need-config +!  THEN
+	dpy-w @ dpy-h @ 2r> d<> IF
+	    winch? on +resize +sync +config
+	ELSE  -config  THEN
     THEN ;
 
 : screen-sync ( -- )  rendering @ -2 > ?EXIT \ don't render if paused
     ?config-changer
-    need-sync @ win and level# @ 0<= and IF
-	show-cursor screen->gl need-sync off  THEN ;
+    win level# @ 0<= and IF
+	?sync IF  -sync show-cursor screen->gl  THEN
+    THEN ;
 
-: >changed ( -- )
-    config-change# need-config !
-    BEGIN  >looper screen-sync need-config @ 0= UNTIL ;
+: gl-fscale ( f -- ) to default-scale
+    1+config screen-ops ;
+: gl-scale ( n -- ) s>f gl-fscale ;
+
+: >changed-to ( ms -- ) #1000000 um* ntime d+ { d: t-o }
+    +config
+    BEGIN  >looper screen-sync ?config 0=
+    ntime t-o du>= or  UNTIL ;
+
+: >changed ( -- ) #1000 >changed-to ;
 
 : 1*scale   1 gl-scale ;
 : 2*scale   2 gl-scale ;
@@ -447,7 +500,7 @@ previous
 : scrolling ( y0 -- )
     rows swap last-y0 motion-y0 ['] +scroll do-motion
     \ long? IF  kbflag @ IF  togglekb  THEN  THEN
-    need-show off ;
+    -show ;
 
 #20. 2Value glitch#
 
@@ -457,7 +510,7 @@ previous
 	r@ action @ \ dup -1 <> IF  dup .  THEN
 	case
 	    1 of
-		r@ eventtime 2@ r@ eventtime' 2@ d- glitch# d>
+		r@ downtime 2@ glitch# d>
 		IF  ?toggle  THEN
 		r@ action on  endof
 	    3 of r@ action on  endof \ cancel
@@ -488,24 +541,31 @@ err>screen
 
 default-out op-vector !
 
-: >screen  err>screen op-vector @ debug-vector ! out>screen ;
+: >screen ( -- )
+    ctx 0= IF  window-init  [IFDEF] map-win map-win [THEN] config-changer  THEN
+    err>screen op-vector @ debug-vector ! out>screen
+    white? IF  >white  ELSE  >black  THEN ;
 
 \ initialize
+
+: term-textures ( -- )
+    s" minos2/ascii.png" term-load-textures ;
+
+:noname defers reload-textures  term-textures ; is reload-textures
 
 : term-init ( -- )
     [IFDEF] clazz [ also jni ] ['] hideprog post-it [ previous ] [THEN]
     >screen-orientation
     create-terminal-program to terminal-program
     terminal-program terminal-init
-    s" minos2/ascii.png" term-load-textures form-chooser
-    unit-matrix MVPMatrix set-matrix  scale-me ;
+    term-textures form-chooser
+    scale-me ;
 
-:noname  defers window-init term-init config-changer ; IS window-init
+:noname  defers window-init term-init ; IS window-init
 
->black \ make black default
-\ >white \ make white default
+[IFDEF] android >black [THEN] \ make black default
 
-window-init
+\ window-init
 
 previous previous \ remove opengl from search order
 

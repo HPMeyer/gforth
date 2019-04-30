@@ -2,7 +2,7 @@
 
 \ Copyright (C) 1992-2000 by Bernd Paysan (486 assemlber)
 
-\ Copyright (C) 2000,2001,2003,2004,2007,2010 Free Software Foundation, Inc.
+\ Copyright (C) 2000,2001,2003,2004,2007,2010,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -67,7 +67,7 @@ Create nrc  ' c, A, ' here A, ' allot A, ' c! A, ' (+rel A,
 >exec +rel
 drop
 
-\ Stack-Buffer für Extra-Werte                         22dec93py
+\ Stack-Buffer fÃ¼r Extra-Werte                         22dec93py
 
 Variable ModR/M               Variable ModR/M#
 Variable SIB                  Variable SIB#
@@ -270,7 +270,7 @@ $AB bc.b: stos  $AD bc.b: lods  $AF bc.b: scas
 : ?64off  .64bit @ .anow @ 0= and IF  10 disp# ! THEN  0 sib# ! ;
 : ?ofax ( reg ax -- flag )
     .64bit @ IF  44  ELSE  .anow @ IF 55 ELSE 66 THEN  THEN AX d= ;
-: mov ( r/m reg / reg r/m / reg -- )  2dup or 0> imm# @ and
+: mov ( r/m reg / reg r/m / reg -- ) imm# @
   IF    assign#  reg?
         IF    >reg  $B8 or byte? @ 3 lshift xor  byte? off
 	      .64now @ IF  10 imm# !  THEN
@@ -388,7 +388,11 @@ $E0 sb: LOOPNE  $E1 sb: LOOPE   $E2 sb: LOOP    $E3 sb: JCXZ
 : jmpf  ( reg / seg -- )
   seg? IF  drop $EA  finish exit  THEN  55 $FF -rex modf ;
 
-: next .d ['] noop >code-address rel) jmp ;
+: next ( -- )
+    \ assume dynamic code generation works, so NOOP's code can be copied
+    \ Essentially assumes: code noop next end-code
+    ['] noop >code-address ['] call >code-address over -
+    here swap dup allot move ;
 
 \ jump if                                              22dec93py
 

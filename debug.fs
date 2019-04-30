@@ -1,6 +1,6 @@
 \ DEBUG.FS     Debugger                                12jun93jaw
 
-\ Copyright (C) 1995,1996,1997,2000,2003,2004,2007,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,2000,2003,2004,2007,2014,2015,2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -69,7 +69,7 @@ get-current also see-voc definitions
         save-see-flags
         NoFine 10 XPos !
         dbg-ip @ DisplayMode c-pass ! Analyse drop
-        25 XPos @ - 0 max spaces ." -> " 
+        25 XPos @ - spaces ." -> " 
         restore-see-flags ;
 
 : get-next ( -- n | n n )

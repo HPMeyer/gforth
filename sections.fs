@@ -1,6 +1,6 @@
 \ Sections for the dictionary (like sections in assembly language)
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -78,7 +78,8 @@ constant extra-section-error
 
 : set-section ( -- )
     \ any changes to other things after changing the section
-    current-section-addr section-dp dpp ! ;
+    current-section-addr section-dp dpp !
+    [IFDEF] check-dp  current-section-addr section-dp to check-dp [THEN] ;
 
 :noname ( -- )
     0 current-section ! set-section ;
@@ -149,6 +150,7 @@ init-sections
 
 \ savesystem
 
+0 warnings !@
 : dump-fi ( c-addr u -- )
     prepare-for-dump
     0 current-section ! set-section
@@ -167,8 +169,9 @@ init-sections
     .sections cr
     #sections 1 cells r@ write-file throw
     r> close-file throw ;
+warnings !
 
-[defined] testing [if]
+[defined] test-it [if] 
 section-size extra-section bla
 cr .sections
 :noname 50 allot ; bla

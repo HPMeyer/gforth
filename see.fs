@@ -1,6 +1,6 @@
 \ SEE.FS       highend SEE for ANSforth                16may93jaw
 
-\ Copyright (C) 1995,2000,2003,2004,2006,2007,2008,2010,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,2000,2003,2004,2006,2007,2008,2010,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -109,7 +109,7 @@ definitions
 : next-head ( addr1 -- addr2 ) \ gforth
     \G find the next header starting after addr1, up to here (unreliable).
     here swap u+do
-	i head? -2 and if
+	i xt? -2 and if
 	    i name>string drop cell negate and unloop exit
 	then
     cell +loop
@@ -329,9 +329,9 @@ VARIABLE C-Pass
 	    EXIT
 	then
     THEN
-    nip dup >f+c @ immediate-mask and
+    nip dup immediate?
     IF
-	bl cemit  ." POSTPONE "
+	bl cemit  ." [COMPILE] "
     THEN
     dup name>string rot wordinfo .string
     ;
@@ -371,7 +371,7 @@ VARIABLE C-Pass
 	over 1 cells + @ decompile-prim ['] call xt= >r
 	over 3 cells + @ decompile-prim ['] ;S xt=
 	r> and if
-	    over 2 cells + @ ['] !extra >body = if  drop
+	    over 2 cells + @ ['] set-does> >body = if  drop
 		S" DOES> " Com# ?.string 4 cells + EXIT endif
 	endif
 	[IFDEF] !;abi-code
@@ -676,37 +676,50 @@ VARIABLE C-Pass
 [THEN]
 
 [IFDEF] useraddr
-    : search-uservar ( offset nt -- offset flag )
-	name>int dup @ douser: = IF
-	    2dup >body @ = IF  -rot nip false  EXIT
+    : ?type-found ( offset nt flag -- offset flag' )
+	IF  2dup >body @ = IF  -rot nip false  EXIT
 	    THEN  THEN  drop true ;
-    : c-useraddr ( addr -- addr' )
+    : search-uservar ( offset nt -- offset flag )
+	name>int dup @ douser: = ?type-found ;
+    : c-searcharg ( addr xt addr u -- addr' ) 2>r >r
 	display? IF
 	    0 over @
-	    [: ['] search-uservar swap traverse-wordlist ;] map-vocs drop
+	    r@ map-vocs drop
 	    display? IF
 		?dup-IF  name>string com# .string bl cemit
-		ELSE  s" uservar " com# .string
+		ELSE  r> 2r@ com# .string >r
 		    dup @ c-. bl cemit
 		THEN
 	    THEN
-	THEN  cell+ ;
+	THEN  cell+ rdrop rdrop rdrop ;
+    : c-useraddr ( addr -- addr' )
+	[: ['] search-uservar swap traverse-wordlist ;]
+	s" useraddr " c-searcharg ;
+[THEN]
+[IFDEF] user@
+    : search-userval ( offset nt -- offset flag )
+	name>int dup >does-code ['] infile-id >does-code = ?type-found ;
+    : c-user@ ( addr -- addr' )
+	[: ['] search-userval swap traverse-wordlist ;]
+	s" user@ " c-searcharg ;
 [THEN]
 
-CREATE C-Table
+CREATE C-Table \ primitives map to code only
 	        ' lit A,            ' c-lit A,
-		' does-exec A,	    ' c-callxt A,
-		' extra-exec A,	    ' c-callxt A,
+[IFDEF] does-exec ' does-exec A,	    ' c-callxt A, [THEN]
+[IFDEF] does-xt ' does-xt A,        ' c-callxt A, [THEN]
+[IFDEF] extra-exec ' extra-exec A,	    ' c-callxt A, [THEN]
+[IFDEF] extra-xt ' extra-xt A,	    ' c-callxt A, [THEN]
 		' lit@ A,	    ' c-call A,
 [IFDEF] call	' call A,           ' c-call A, [THEN]
 [IFDEF] call-loc ' call-loc A,      ' c-call A, [THEN]
 \		' useraddr A,	    ....
 		' lit-perform A,    ' c-call A,
 		' lit+ A,	    ' c-lit+ A,
-[IFDEF] (s")	' (s") A,	    ' c-c" A, [THEN]
-[IFDEF] (.")	' (.") A,	    ' c-c" A, [THEN]
-[IFDEF] "lit    ' "lit A,           ' c-c" A, [THEN]
-[IFDEF] (c")	' (c") A,	    ' c-c" A, [THEN]
+\ [IFDEF] (s")	' (s") A,	    ' c-c" A, [THEN]
+\ [IFDEF] (.")	' (.") A,	    ' c-c" A, [THEN]
+\ [IFDEF] "lit    ' "lit A,           ' c-c" A, [THEN]
+\ [IFDEF] (c")	' (c") A,	    ' c-c" A, [THEN]
         	' (do) A,           ' c-do A,
 [IFDEF] (+do)	' (+do) A,	    ' c-?do A, [THEN]
 [IFDEF] (u+do)	' (u+do) A,	    ' c-?do A, [THEN]
@@ -723,13 +736,14 @@ CREATE C-Table
 [IFDEF] (-loop) ' (-loop) A,        ' c-loop A, [THEN]
         	' (next) A,         ' c-loop A,
         	' ;s A,             ' c-exit A,
-[IFDEF] (abort") ' (abort") A,      ' c-abort" A, [THEN]
+\ [IFDEF] (abort") ' (abort") A,      ' c-abort" A, [THEN]
 \ only defined if compiler is loaded
-[IFDEF] (compile) ' (compile) A,      ' c-(compile) A, [THEN]
+\ [IFDEF] (compile) ' (compile) A,      ' c-(compile) A, [THEN]
 [IFDEF] u#exec  ' u#exec A,         ' c-u#exec A, [THEN]
 [IFDEF] u#+     ' u#+ A,            ' c-u#+ A, [THEN]
 [IFDEF] call-c# ' call-c# A,        ' c-call-c# A, [THEN]
 [IFDEF] useraddr ' useraddr A,      ' c-useraddr A, [THEN]
+[IFDEF] user@    ' user@ A,         ' c-user@ A, [THEN]
         	0 ,		here 0 ,
 
 avariable c-extender
@@ -777,8 +791,8 @@ c-extender !
 : analyse ( a-addr1 -- a-addr2 )
     Branches @ IF BranchTo? THEN
     dup cell+ swap @
-    dup >r DoTable r> swap IF drop EXIT THEN
-    Display?
+    dup >r DoTable IF rdrop EXIT THEN
+    r> Display?
     IF
 	.word bl cemit
     ELSE
@@ -925,7 +939,7 @@ set-current
     dup synonym? IF
 	." Synonym " dup .name dup @ .name
     ELSE
-	dup >f+c @ alias-mask and 0= IF
+	dup alias? IF
 	    dup @ name>string nip 0= IF
 		dup @ hex.
 	    ELSE

@@ -1,4 +1,4 @@
-\ Copyright (C) 2001,2003,2007,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2001,2003,2007,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -19,13 +19,15 @@
 
 : >system ( addr u -- ) cr system ;
 : system, slit, postpone >system ;
-' >system ' system, ' slit, recognizer r:eval
+' >system ' system, ' slit, rectype: rectype-eval
 
-: rec:shell ( addr u -- addr u' r:string )
+: rec-shell ( addr u -- addr u' rectype-eval | rectype-null )
     \G evaluate string + rest of command line
-    drop source drop - >in ! source >in @ /string dup >in +!
-    r:eval ;
-' rec:shell get-recognizers 1+ set-recognizers
+    over source drop = IF
+	drop source drop - >in ! source >in @ /string dup >in +!
+	rectype-eval
+    ELSE  2drop rectype-null  THEN ;
+' rec-shell get-recognizers 1+ set-recognizers
 
 User sh$  cell uallot drop
 : sh-get ( addr u -- addr' u' )
@@ -37,3 +39,7 @@ User sh$  cell uallot drop
 :noname '`' parse sh-get ;
 :noname '`' parse postpone SLiteral postpone sh-get ;
 interpret/compile: s` ( "eval-string" -- addr u )
+
+[IFDEF] thread-init
+    :noname defers thread-init #0. sh$ 2! ; is thread-init
+[THEN]

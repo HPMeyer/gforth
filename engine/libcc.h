@@ -1,6 +1,6 @@
 /* header file for libcc-generated C code
 
-  Copyright (C) 2006,2007,2008,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+  Copyright (C) 2006,2007,2008,2012,2013,2014,2015,2016,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -18,7 +18,7 @@
   along with this program. If not, see http://www.gnu.org/licenses/.
 */
 
-#include <gforth/@PACKAGE_VERSION@/@machine@/config.h>
+#include "config.h"
 #include <stddef.h>
 #include <signal.h>
 #include <alloca.h>
@@ -60,6 +60,10 @@ typedef struct {
 
 typedef struct {
   Cell magic;
+  Cell *handler;
+  Cell first_throw;
+  Cell *wraphandler; /* experimental */
+  jmp_buf * throw_jumpptr;
   Cell *spx;
   Cell *rpx;
   Address lpx;
@@ -67,7 +71,6 @@ typedef struct {
   user_area* upx;
   Cell *s_ip;
   Cell *s_rp;
-  jmp_buf * throw_jumpptr;
 } stackpointers;
 
 #ifdef HAS_BACKLINK
@@ -233,12 +236,3 @@ static wchar_t * gforth_str2wc(Char* addr, UCell u)
 typedef Char hash_128[16];
 
 #define GFSS 0x80 /* stack sizes */
-
-#define GFORTH_MAKESTACK(n)					   \
-  if(gforth_magic != GFORTH_MAGIC) {				   \
-    gforth_RP = alloca(n*sizeof(Cell))+sizeof(Cell)*(n);	   \
-    gforth_SP = alloca(n*sizeof(Cell))+sizeof(Cell)*(n-1);	   \
-    gforth_FP = alloca(n*sizeof(Float))+sizeof(Float)*(n-1);	   \
-    gforth_LP = alloca(n*sizeof(Cell))+sizeof(Cell)*(n);	   \
-    gforth_UP = gforth_main_UP;					   \
-  }

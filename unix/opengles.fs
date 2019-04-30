@@ -1,6 +1,6 @@
 \ wrapper to load Swig-generated libraries
 
-\ Copyright (C) 2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -20,24 +20,11 @@
 Vocabulary opengl
 get-current also opengl definitions
 
-c-library opengles
-    e? os-type s" ios" str= [IF]
-	\c #include <Availability.h>
-	\c #include <OpenGLES/ES2/gl.h>
-	\c #include <OpenGLES/ES2/glext.h>
-
-	include unix/ios-gles.fs
-    [ELSE]
-        \c #include <GLES2/gl2.h>
-        \c #include <GLES2/gl2ext.h>
-        \c #include <EGL/egl.h>
-
-	s" GLESv2" add-lib
-	s" EGL" add-lib
-    
-	include unix/gles.fs
-	include unix/egl.fs
-    [THEN]
-end-c-library
+e? os-type s" ios" str= [IF]
+    include unix/ios-gles.fs
+[ELSE]
+    include unix/gles.fs
+    include unix/egl.fs
+[THEN]
 
 previous set-current

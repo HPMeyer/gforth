@@ -1,7 +1,7 @@
 /* command line interpretation, image loading etc. for Gforth
 
 
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -21,6 +21,7 @@
 
 #include "config.h"
 #include "forth.h"
+#include "symver.h"
 #include <errno.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -149,6 +150,7 @@ int ignore_async_signals=0;
 #ifndef INCLUDE_IMAGE
 static int clear_dictionary=0;
 UCell pagesize=1;
+Address dictguard; // guard page for dictionary
 char *progname;
 #else
 char *progname = "gforth";
@@ -257,11 +259,6 @@ Char *gforth_memmove(Char * dest, const Char* src, Cell n)
 Char *gforth_memset(Char * s, Cell c, UCell n)
 {
   return memset(s, c, n);
-}
-
-Char *gforth_memcpy(Char * dest, const Char* src, Cell n)
-{
-  return memcpy(dest, src, n);
 }
 #endif
 
@@ -390,18 +387,7 @@ void gforth_relocate(Cell *image, const Char *bitstring,
 	    switch(token|0x4000) {
 	    case CF_NIL      : image[i]=0; break;
 #if !defined(DOUBLY_INDIRECT)
-	    case CF(DOCOL)   :
-	    case CF(DOVAR)   :
-	    case CF(DOCON)   :
-	    case CF(DOVAL)   :
-	    case CF(DOUSER)  : 
-	    case CF(DODEFER) : 
-	    case CF(DOFIELD) : 
-	    case CF(DODOES)  :
-	    case CF(DOABICODE) :
-	    case CF(DOSEMIABICODE): 
-	    case CF(DOEXTRA): 
-	    case CF(DODOESXT): 
+	    case CF(DOER_MAX) ... CF(DOCOL):
 	      MAKE_CF(image+i,symbols[CF(token)]); break;
 #endif /* !defined(DOUBLY_INDIRECT) */
 	    default          : /* backward compatibility */
@@ -450,7 +436,9 @@ void gforth_relocate(Cell *image, const Char *bitstring,
           /* if base is > 0: 0 is a null reference so don't adjust*/
           if (token>=base) {
             image[i]+=(Cell)start;
-          }
+          } else if(token!=0) {
+	    fprintf(stderr, "tagged item image[%x]=%llx unrelocated\n", i, (long long)image[i]);
+	  }
         }
       }
     }
@@ -570,9 +558,19 @@ static void page_noaccess(void *a)
 }  
 #endif
 
-static size_t wholepage(size_t n)
+static inline size_t wholepage(size_t n)
 {
   return (n+pagesize-1)&~(pagesize-1);
+}
+
+static Address alloc_mmap_guard(Cell size)
+{
+  Address start;
+  size = wholepage(size+pagesize);
+  start=alloc_mmap(size);
+  dictguard=start+size-pagesize;
+  page_noaccess(dictguard);
+  return start;
 }
 
 Address gforth_alloc(Cell size)
@@ -596,7 +594,7 @@ static void *dict_alloc_read(FILE *file, Cell imagesize, Cell dictsize, Cell off
 
 #if defined(HAVE_MMAP)
   if (offset==0) {
-    image=alloc_mmap(dictsize);
+    image=alloc_mmap_guard(dictsize);
     if (image != (void *)MAP_FAILED) {
       void *image1;
       debugp(stderr, "mmap($%lx) succeeds, address=%p\n", (long)dictsize, image);
@@ -687,13 +685,13 @@ Cell gforth_go(Xt* ip0)
   throw_jmp_handler = &throw_jmp_buf;
 
   debugp(stderr, "setjmp(%p)\n", *throw_jmp_handler);
-  while((throw_code=setjmp(*throw_jmp_handler))) {
+  while((throw_code=setjmp(throw_jmp_buf))) {
     signal_data_stack[15]=throw_code;
 
 #ifdef GFORTH_DEBUGGING
     debugp(stderr,"\ncaught signal, throwing exception %d, ip=%p rp=%p\n",
 	   throw_code, saved_ip, saved_rp);
-    if ((saved_rp > NEXTPAGE2(gforth_UP->sp0)) &&
+    if ((saved_rp-2 > NEXTPAGE2(gforth_UP->sp0)) &&
 	(saved_rp < NEXTPAGE(gforth_UP->rp0))) {
       /* no rstack overflow or underflow */
       gforth_RP = saved_rp;
@@ -935,7 +933,7 @@ static void check_prims(Label symbols1[])
   goto_p = ends1j+i+1; /* goto_p[0]==before; ...[1]==after;*/
   nends1j = i+1;
   ends1jsorted = (Label *)alloca(nends1j*sizeof(Label));
-  memcpy(ends1jsorted,ends1j,nends1j*sizeof(Label));
+  memmove(ends1jsorted,ends1j,nends1j*sizeof(Label));
   qsort(ends1jsorted, nends1j, sizeof(Label), compare_labels);
 
   /* check whether the "goto *" is relocatable */
@@ -1097,7 +1095,7 @@ static void MAYBE_UNUSED align_code(void)
   UCell offset = ((UCell)code_here)&(alignment-1);
   UCell length = alignment-offset;
   if (length <= maxpadding) {
-    memcpy(code_here,nops+offset,length);
+    memmove(code_here,nops+offset,length);
     code_here += length;
   }
 #endif /* defined(CODE_PADDING) */
@@ -1111,10 +1109,10 @@ static void append_jump(void)
     PrimInfo *pi = &priminfos[last_jump];
     
     /* debugp(stderr, "Copy code %p<=%p+%x,%d\n", code_here, pi->start, pi->length, pi->restlength); */
-    memcpy(code_here, pi->start+pi->length, pi->restlength);
+    memmove(code_here, pi->start+pi->length, pi->restlength);
     code_here += pi->restlength;
     /* debugp(stderr, "Copy goto %p<=%p,%d\n", code_here, goto_start, goto_len); */
-    memcpy(code_here, goto_start, goto_len);
+    memmove(code_here, goto_start, goto_len);
     code_here += goto_len;
     align_code();
     last_jump=0;
@@ -1167,7 +1165,7 @@ static Address append_prim(Cell p)
   if(reserve_code_space(pi->length+pi->restlength+goto_len+CODE_ALIGNMENT-1))
     return NULL;
   /* debugp(stderr, "Copy code %p<=%p,%d\n", code_here, pi->start, pi->length); */
-  memcpy(code_here, pi->start, pi->length);
+  memmove(code_here, pi->start, pi->length);
   old_code_here = code_here;
   code_here += pi->length;
   return old_code_here;
@@ -1980,7 +1978,7 @@ static FILE *checkimage(char *path, int len, char *imagename)
 #endif
     ;
 
-  memcpy(fullfilename, path, dirlen);
+  memmove(fullfilename, path, dirlen);
   if (dirlen && fullfilename[dirlen-1]!=DIRSEP)
     fullfilename[dirlen++]=DIRSEP;
   strcpy(fullfilename+dirlen,imagename);
@@ -1996,7 +1994,7 @@ static FILE *checkimage(char *path, int len, char *imagename)
       return NULL;
     }
     preamblesize+=8;
-  } while(memcmp(magic,"Gforth5",7));
+  } while(memcmp(magic,"Gforth6",7));
   if (debug) {
     fprintf(stderr,"Magic found: %*s ", 6, magic);
     print_sizes(magic[7]);
@@ -2231,10 +2229,13 @@ static void print_diag()
      )
     debugp(stderr, "relocs: %d:%d\n", relocs, nonrelocs);
     fprintf(stderr, "*** %sperformance problems ***\n%s%s",
-#if defined(BUGGY_LL_CMP) || defined(BUGGY_LL_MUL) || defined(BUGGY_LL_DIV) || defined(BUGGY_LL_ADD) || defined(BUGGY_LL_SHIFT) || defined(BUGGY_LL_D2F) || defined(BUGGY_LL_F2D) || !(defined(FORCE_REG) || defined(FORCE_REG_UNNECESSARY)) || defined(BUGGY_LONG_LONG)
+#if defined(BUGGY_LL_CMP) || defined(BUGGY_LL_MUL) || defined(BUGGY_LL_DIV) || defined(BUGGY_LL_ADD) || defined(BUGGY_LL_SHIFT) || defined(BUGGY_LL_D2F) || defined(BUGGY_LL_F2D) || !(defined(FORCE_REG) || defined(FORCE_REG_UNNECESSARY)) || defined(BUGGY_LONG_LONG) || (NO_DYNAMIC_DEFAULT)
 	    "",
 #else
 	    "no ",
+#endif
+#if (NO_DYNAMIC_DEFAULT)
+	    "    no dynamic code generation by default\n"
 #endif
 #if defined(BUGGY_LL_CMP) || defined(BUGGY_LL_MUL) || defined(BUGGY_LL_DIV) || defined(BUGGY_LL_ADD) || defined(BUGGY_LL_SHIFT) || defined(BUGGY_LL_D2F) || defined(BUGGY_LL_F2D)
 	    "    double-cell integer type buggy ->\n        "
@@ -2311,9 +2312,7 @@ int gforth_args(int argc, char ** argv, char ** path, char ** imagename)
       {"no-offset-im", no_argument, &offset_image, 0},
       {"clear-dictionary", no_argument, &clear_dictionary, 1},
       {"debug", no_argument, &debug, 1},
-#ifdef HAVE_MCHECK
       {"debug-mcheck", no_argument, &debug_mcheck, 1},
-#endif
       {"diag", no_argument, NULL, 'D'},
       {"die-on-signal", no_argument, &die_on_signal, 1},
       {"ignore-async-signals", no_argument, &ignore_async_signals, 1},
@@ -2358,7 +2357,7 @@ int gforth_args(int argc, char ** argv, char ** path, char ** imagename)
     case 's': die_on_signal = 1; break;
     case 'x': debug = 1; break;
     case 'D': print_diag(); break;
-    case 'v': fputs(PACKAGE_STRING" "ARCH"\n", stderr); return 1;
+    case 'v': fputs(PACKAGE_STRING" "ARCH"\n", stderr); exit(0);
     case opt_code_block_size: if((code_area_size = convsize(optarg,sizeof(Char)))==-1L) return 1; break;
     case ss_number: static_super_number = atoi(optarg); break;
     case ss_states: maxstates = max(min(atoi(optarg),MAX_STATE),1); break;
@@ -2494,10 +2493,6 @@ void gforth_cleanup()
 
 user_area* gforth_stacks(Cell dsize, Cell fsize, Cell rsize, Cell lsize)
 {
-#ifdef SIGSTKSZ
-  stack_t sigstack;
-  int sas_retval=-1;
-#endif
   size_t totalsize;
   Cell a;
   user_area * up0;
@@ -2518,16 +2513,6 @@ user_area* gforth_stacks(Cell dsize, Cell fsize, Cell rsize, Cell lsize)
     page_noaccess((void*)a); a+=pagesize; up0->fp0=(Float*)(a+fsize); a+=fsizep;
     page_noaccess((void*)a); a+=pagesize; up0->lp0=(Address)(a+lsize); a+=lsizep;
     page_noaccess((void*)a); a+=pagesize;
-# ifdef SIGSTKSZ
-    sigstack.ss_sp=(void*)a+SIGSTKSZ;
-    sigstack.ss_size=SIGSTKSZ;
-    sigstack.ss_flags=0;
-    sas_retval=sigaltstack(&sigstack,(stack_t *)0);
-# if defined(HAS_FILE) || !defined(STANDALONE)
-    if(sas_retval)
-      debugp(stderr,"sigaltstack: %s\n",strerror(errno));
-# endif
-#endif
   /* ensure that the cached elements (if any) are accessible */
 #if !(defined(GFORTH_DEBUGGING) || defined(INDIRECT_THREADED) || defined(DOUBLY_INDIRECT) || defined(VM_PROFILING))
     up0->sp0 -= 8; /* make stuff below bottom accessible for stack caching */
@@ -2548,20 +2533,29 @@ user_area* gforth_stacks(Cell dsize, Cell fsize, Cell rsize, Cell lsize)
     a+=pagesize; up0->rp0=a+rsize; a+=rsizep;
     a+=pagesize; up0->fp0=a+fsize; a+=fsizep;
     a+=pagesize; up0->lp0=a+lsize; a+=lsizep;
-    a+=pagesize;
-#ifdef SIGSTKSZ
-    sigstack.ss_sp=(void*)a+SIGSTKSZ;
-    sigstack.ss_size=SIGSTKSZ;
-    sigstack.ss_flags=0;
-    sas_retval=sigaltstack(&sigstack,(stack_t *)0);
-#if defined(HAS_FILE) || !defined(STANDALONE)
-    if(sas_retval)
-      debugp(stderr,"sigaltstack: %s\n",strerror(errno));
-#endif
-#endif
     return up0;
   }
   return 0;
+#endif
+}
+
+static inline void gforth_set_sigaltstack(user_area * t)
+{
+#ifdef SIGSTKSZ
+  stack_t sigstack;
+  int sas_retval=-1;
+#endif
+  Cell a=wholepage((size_t)(t->lp0));
+  a+=pagesize;
+#ifdef SIGSTKSZ
+  sigstack.ss_sp=(void*)a+SIGSTKSZ;
+  sigstack.ss_size=SIGSTKSZ;
+  sigstack.ss_flags=0;
+  sas_retval=sigaltstack(&sigstack,(stack_t *)0);
+#if defined(HAS_FILE) || !defined(STANDALONE)
+  if(sas_retval)
+    debugp(stderr,"sigaltstack: %s\n",strerror(errno));
+#endif
 #endif
 }
 
@@ -2596,6 +2590,12 @@ void gforth_setstacks(user_area * t)
   gforth_RP = t->rp0;
   gforth_FP = t->fp0;
   gforth_LP = t->lp0;
+
+  gforth_SPs.handler = 0;
+  gforth_SPs.first_throw = ~0;
+  gforth_SPs.wraphandler = 0;
+
+  gforth_set_sigaltstack(t);
 }
 
 Cell gforth_boot(int argc, char** argv, char* path)
@@ -2691,7 +2691,7 @@ Cell gforth_main(int argc, char **argv, char **env)
   Cell retvalue=gforth_start(argc, argv);
   debugp(stderr, "Start returned %ld\n", retvalue);
 
-  if(retvalue == -56) { /* throw-code for quit */
+  while(retvalue == -56) { /* throw-code for quit */
     gforth_setwinch();
     gforth_bootmessage();
     retvalue = gforth_quit();

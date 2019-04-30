@@ -1,6 +1,6 @@
 \ input output basics				(extra since)	02mar97jaw
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -50,7 +50,7 @@ User out ( -- addr ) \ gforth
 Variable winch?
 
 #-512 Constant EOK
-#-516 Constant EINTR
+#-516 Constant EINTR \ error returned for window change
 
 : key-file ( fd -- key )
     \G Read one character @i{n} from @i{wfileid}.  This word disables
@@ -85,7 +85,8 @@ umethod cr ( -- ) \ core c-r
 umethod page ( -- )
 umethod at-xy ( x y -- )
 umethod at-deltaxy ( dx dy -- )
-umethod attr! ( attr -- )
+umethod attr! ( attr -- ) \ gforth
+\G apply attribute to terminal (i.e. set color)
 2drop
 
 user-o ip-vector
@@ -133,7 +134,7 @@ A, here AConstant debug-out
 
 default-out op-vector !
 
-AVariable debug-vector
+AUser debug-vector
 debug-out debug-vector !
 
 here

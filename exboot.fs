@@ -1,7 +1,7 @@
 \ include except.fs and restart Gforth. Gforth is restarted to create
 \ an exception frame for the exception handler.
 
-\ Copyright (C) 2000,2001,2003,2004,2007,2013,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2000,2001,2003,2004,2007,2013,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -22,5 +22,6 @@ require except.fs
 
 \ now boot
 
-pathstring 2@ argv @ argc @ boot
+pathstring 2@ argv @ argc @
+:noname save-strings boot ; execute
     

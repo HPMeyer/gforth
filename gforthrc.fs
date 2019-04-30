@@ -1,6 +1,6 @@
 \ load a ~/.gforthrc on startup
 
-\ Copyright (C) 2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2015,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -29,16 +29,17 @@ previous definitions
 ; is image-options
 
 : load-rc ( -- )
-    \G if available, load @file{~/.gforthrc} after processing args
+    \G if available, load @file{~/.config/gforthrc} after processing args
+    \G disable by setting @var{load-rc?} to 0 (see option @code{--no-rc}).
     load-rc? @ IF
-	s" ~/.gforthrc" open-fpath-file
+	s" ~/.config/gforthrc" open-fpath-file
 	0= IF  included1  ELSE  drop  THEN
     THEN ;
 : load-rc0 ( -- )
-    \G if available, load @file{~/.gforthrc0} or whatever is in the
+    \G if available, load @file{~/.config/gforthrc0} or whatever is in the
     \G environment varialbe @code{GFORTH_ENV} before processing args.
     \G disable loading by setting @code{GFORTH_ENV} to @file{off}.
-    s" GFORTH_ENV" getenv 2dup d0= IF  2drop s" ~/.gforthrc0"  THEN
+    s" GFORTH_ENV" getenv 2dup d0= IF  2drop s" ~/.config/gforthrc0"  THEN
     2dup s" off" str= IF  2drop EXIT  THEN
     open-fpath-file 0= IF  included1  ELSE  drop  THEN ;
 

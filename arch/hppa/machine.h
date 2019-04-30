@@ -1,6 +1,6 @@
 /* This is the machine-specific part for a HPPA running HP-UX
 
-  Copyright (C) 1995,1996,1997,1998,1999,2003,2005,2007 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,1999,2003,2005,2007,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -25,17 +25,19 @@
 #include "../generic/machine.h"
 
 /* cache flush stuff */
+#ifndef FLUSH_ICACHE
 extern void cacheflush(void *, size_t, size_t);
-#ifdef DEBUG
+# ifdef DEBUG
 #  define FLUSH_ICACHE(addr,size) \
 ({ \
    fprintf(stderr,"Flushing Cache at %08x:%08x\n",(int) addr, size); \
    fflush(stderr); \
    cacheflush((void *)(addr), (size_t)(size), 32); \
    fprintf(stderr,"Cache flushed\n");  })
-#else
+# else
 #  define FLUSH_ICACHE(addr,size) \
      cacheflush((void *)(addr), (size_t)(size), 32)
+# endif
 #endif
 
 /* #undef HAVE_LOG1P */

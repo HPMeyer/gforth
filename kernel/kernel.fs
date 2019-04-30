@@ -1,6 +1,6 @@
 \ kernel.fs this is a master include file for the kernel sources 2may97jaw
 
-\ Copyright (C) 1995,1996,1997,1998,1999,2001,2003,2005,2006,2007,2011,2012,2013 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,1999,2001,2003,2005,2006,2007,2011,2012,2013,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,23 +17,17 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-\ include ./basics.fs
-\ include ./io.fs		\ basic io functions
-has? interpreter [IF]
-    include ./int.fs
-    has? compiler [IF]
-	include ./comp.fs
-	include ./vtables.fs
-    [THEN]
+require ./vars.fs
+include ./input-class.fs
+include ./int.fs
+has? compiler [IF]
+    include ./vtables.fs
+    include ./comp.fs
 [THEN]
-has? new-input [IF]
-    include ./accept.fs
-    include ./input.fs
-[ELSE]
-    include ./saccept.fs
-[THEN]
+include ./accept.fs
+include ./input.fs
 has? os [IF]
-include ./license.fs
-include ./xchars.fs
+    include ./license.fs
+    include ./xchars.fs
 [THEN]
 \ include ./nio.fs

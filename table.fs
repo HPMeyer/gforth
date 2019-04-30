@@ -1,6 +1,6 @@
 \ table fomerly in search.fs
 
-\ Copyright (C) 1996,1997,1999,2001,2003,2007,2015 Free Software Foundation, Inc.
+\ Copyright (C) 1996,1997,1999,2001,2003,2007,2015,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -25,12 +25,20 @@ require hash.fs
     >r 2dup r> bucket @ (tablelfind) ;
 
 Create tablesearch-map ( -- wordlist-map )
+    ' table-find A, ' table-reveal A, ' (rehash) A, ' (rehash) A,
+Create cs-wordlist-search-map ( -- wordlist-map )
     ' table-find A, ' hash-reveal A, ' (rehash) A, ' (rehash) A,
 
 : table ( -- wid ) \ gforth
-    \g Create a case-sensitive wordlist.
+    \g Create a lookup table (case-sensitive, no warnings).
     tablesearch-map mappedwordlist ;
 
-: voctable ( "name" -- ) \ gforth
+: cs-wordlist ( -- wid ) \ gforth
+    \g Create a case-sensitive wordlist.
+    cs-wordlist-search-map mappedwordlist ;
+
+: cs-vocabulary ( "name" -- ) \ gforth
     \g Create a case-senisitve vocabulary
-    Vocabulary tablesearch-map lastxt >body ! ;
+    Vocabulary cs-wordlist-search-map lastxt >body ! ;
+
+' cs-vocabulary alias voctable

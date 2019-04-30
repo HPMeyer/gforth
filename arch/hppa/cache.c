@@ -1,6 +1,6 @@
 /* cache flushing for the HP-PA architecture
 
-  Copyright (C) 1995,1996,1997,1998,2003,2007 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2003,2007,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -18,6 +18,7 @@
   along with this program; if not, see http://www.gnu.org/licenses/.
 */
 
+#include "config.h"
 #include <stddef.h>
 
 void cacheflush(void * address, size_t size, size_t linewidth)
@@ -41,7 +42,7 @@ void cacheflush(void * address, int size, int linewidth)
   for(i=1-linewidth; i<size; i+=linewidth)
     asm volatile("fdc (%0)\n\t"
 		 "sync\n\t"
-		 "fic,m %1(%0)\n\t"
+		 "fic,m %1(4,%0)\n\t"
 		 "sync" : : "r" (address), "r" (linewidth) : "memory" );
 }
 #endif

@@ -1,6 +1,6 @@
 \ Structural Conditionals                              12dec92py
 
-\ Copyright (C) 1995,1996,1997,2000,2003,2004,2007,2010,2011,2012,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,2000,2003,2004,2007,2010,2011,2012,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -18,7 +18,7 @@
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
 here 0 , \ just a dummy, the real value of locals-list is patched into it in glocals.fs
-AConstant locals-list \ acts like a variable that contains
+AValue locals-list \ acts like a variable that contains
 		      \ a linear list of locals names
 0 value locals-wordlist
 
@@ -106,6 +106,8 @@ variable backedge-locals
 
 defer other-control-flow ( -- )
 \ hook for control-flow stuff that's not handled by begin-like etc.
+defer if-like
+\ hook for if-like control flow not handled by other-control-flow
 
 : ?struc      ( tag -- )
     defstart <> &-22 and throw ;
@@ -113,7 +115,9 @@ defer other-control-flow ( -- )
     ?struc execute ;
 
 : >mark ( -- orig )
- cs-push-orig 0 , other-control-flow ;
+    cs-push-orig 0 , other-control-flow ;
+: >mark? ( -- orig )
+    >mark if-like ;
 : >resolve    ( addr -- )
     here swap !
     basic-block-end ;
@@ -132,15 +136,15 @@ defer other-control-flow ( -- )
     POSTPONE branch  >mark  POSTPONE unreachable ; immediate restrict
 
 : IF ( compilation -- orig ; run-time f -- ) \ core
- POSTPONE ?branch >mark ; immediate restrict
+    POSTPONE ?branch >mark? ; immediate restrict
 
 : ?DUP-IF ( compilation -- orig ; run-time n -- n| ) \ gforth	question-dupe-if
 \G This is the preferred alternative to the idiom "@code{?DUP IF}", since it can be
 \G better handled by tools like stack checkers. Besides, it's faster.
-    POSTPONE ?dup-?branch >mark ;       immediate restrict
+    POSTPONE ?dup-?branch >mark? ;       immediate restrict
 
 : ?DUP-0=-IF ( compilation -- orig ; run-time n -- n| ) \ gforth	question-dupe-zero-equals-if
-    POSTPONE ?dup-0=-?branch >mark ;       immediate restrict
+    POSTPONE ?dup-0=-?branch >mark? ;       immediate restrict
 
 Defer then-like ( orig -- )
 : cs>addr ( orig/dest -- )  drop >resolve drop ;
@@ -156,7 +160,7 @@ immediate restrict
 \ brought up with fig-Forth).
 
 : ELSE ( compilation orig1 -- orig2 ; run-time -- ) \ core
-    POSTPONE ahead
+    POSTPONE ahead  dead-code off
     1 cs-roll
     POSTPONE then ; immediate restrict
 
@@ -332,6 +336,15 @@ Defer exit-like ( -- )
 : ?EXIT ( -- ) ( compilation -- ; run-time nest-sys f -- | nest-sys ) \ gforth
     POSTPONE if POSTPONE exit POSTPONE then ; immediate restrict
 
+: execute-exit ( compilation -- ; run-time xt nest-sys -- ) \ gforth
+    \G Execute @code{xt} and return from the current definition, in a
+    \G tail-call-optimized way: The return address @code{nest-sys} and
+    \G the locals are deallocated before executing @code{xt}.
+    exit-like
+    POSTPONE execute-;s
+    basic-block-end
+    POSTPONE unreachable ; immediate compile-only
+
 \ scope endscope
 
 : scope ( compilation  -- scope ; run-time  -- ) \ gforth
@@ -350,17 +363,7 @@ defer adjust-locals-list ( wid -- )
 : wrap! ( wrap-sys -- )
     ( unlocal-state ! ) to locals-wordlist leave-sp ! lastcfa ! last ! vtrestore ;
 
-: int-[: ( -- flag colon-sys )
-    wrap@ false :noname ;
-: comp-[: ( -- quotation-sys flag colon-sys )
-    wrap@
-    postpone AHEAD
-    locals-list @ locals-list off
-    postpone SCOPE
-    true  :noname  ;
-' int-[: ' comp-[: interpret/compile: [: ( compile-time: -- quotation-sys flag colon-sys ) \ gforth bracket-colon
-\G Starts a quotation
-
+: (int-;]) ( some-sys lastxt -- ) >r vt, wrap! r> ;
 : (;]) ( some-sys lastxt -- )
     >r
     ] postpone ENDSCOPE vt,
@@ -369,7 +372,18 @@ defer adjust-locals-list ( wid -- )
     wrap!
     r> postpone ALiteral ;
 
+: int-[: ( -- flag colon-sys )
+    wrap@ ['] (int-;]) :noname ;
+: comp-[: ( -- quotation-sys flag colon-sys )
+    wrap@
+    postpone AHEAD
+    locals-list @ locals-list off
+    postpone SCOPE
+    ['] (;])  :noname  ;
+' int-[: ' comp-[: interpret/compile: [: ( compile-time: -- quotation-sys flag colon-sys ) \ gforth bracket-colon
+\G Starts a quotation
+
 : ;] ( compile-time: quotation-sys -- ; run-time: -- xt ) \ gforth semi-bracket
     \g ends a quotation
-    POSTPONE ; swap IF (;]) ELSE >r vt, wrap! r> THEN ( xt ) ; immediate
+    POSTPONE ; swap execute ( xt ) ; immediate
 

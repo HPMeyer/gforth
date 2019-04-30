@@ -1,6 +1,6 @@
 \ defining words for words with non-default and non-immediate compilation semantics
 
-\ Copyright (C) 1996,1997,2000,2003,2007,2010 Free Software Foundation, Inc.
+\ Copyright (C) 1996,1997,2000,2003,2007,2010,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -22,69 +22,33 @@
 \     interpretation> ... <interpretation
 \     compilation> ... <compilation ;
 
+require rec-tick.fs
 
-noname create
-does> abort" interpreting word without interpretation semantics" ;
-latestxt >does-code
-does> abort" compiling word without compilation semantics" ;
-latestxt >does-code
-constant no-compilation-does-code
-constant no-interpretation-does-code
-
-: create-interpret/compile ( "name" -- ) \ gforth-obsolete
-    0 0 interpret/compile:
-    here latestxt interpret/compile-comp !
-    no-compilation-does-code here does-code!
-    [ 0 >body ] literal allot
-    here latestxt interpret/compile-int !
-    no-interpretation-does-code here does-code!
-    [ 0 >body ] literal allot ; \ restrict?
-
-: fix-does-code ( addr ret-addr -- )
-    latestxt [ interpret/compile-struct %size ] literal + >r
-    latestxt interpret/compile?
-    latestxt interpret/compile-int @ r@ >body = and
-    latestxt interpret/compile-comp @ r> = and
-    0= abort" not created with create-interpret/compile"
-    cell+ cell+ maxaligned \ to does-code
-    swap @ does-code! ;
-
-: (interpretation>1) ( addr R:retaddr -- )
-    latestxt interpret/compile-int swap fix-does-code ;
+synonym create-interpret/compile create ( "name" -- ) \ gforth-obsolete
 
 : interpretation> ( compilation. -- orig colon-sys ) \ gforth-obsolete
-    here 4 cells +  POSTPONE literal POSTPONE (interpretation>1) POSTPONE ahead
-    defstart dead-code off 0 set-locals-size-list ; immediate restrict
+    postpone [: ; immediate restrict
 
 : <interpretation ( compilation. orig colon-sys -- ) \ gforth-obsolete
-    ?struc POSTPONE exit
-    POSTPONE then ; immediate restrict
-
-: (compilation>1) ( addr R:retaddr -- )
-    latestxt interpret/compile-comp swap fix-does-code ;
+    ]] ;] set-does> [[ ; immediate restrict
 
 : compilation> ( compilation. -- orig colon-sys ) \ gforth-obsolete
-    here 4 cells + POSTPONE literal POSTPONE (compilation>1) POSTPONE ahead
-    defstart dead-code off 0 set-locals-size-list POSTPONE >body ; immediate restrict
+    \G use a anonymous closure on the heap, acceptable leakage
+    ]] [: >body [n:h [[ ; immediate restrict
 
-comp' <interpretation drop
-Alias <compilation ( compilation. orig colon-sys -- ) \ gforth-obsolete
-immediate restrict
+: <compilation ( orig colon-sys -- ) \ gforth-obsolete
+    ]] ;] `execute ;] set->comp [[ ; immediate restrict
 
-\ example
-\ : constant ( n "name" -- )
-\     create-interpret/compile
-\     ,
-\ interpretation>
-\     @
-\ <interpretation
-\ compilation>
-\     @ postpone literal
-\ <compilation ;
+\\\ example
+: constant ( n "name" -- )
+    create-interpret/compile
+    ,
+interpretation>    @                    <interpretation
+compilation>       @ postpone literal   <compilation ;
 
-\ 5 constant five
+5 constant five
 
-\ cr
-\ five . cr
-\ : fuenf five ;
-\ see fuenf cr
+cr
+five . cr
+: fuenf five ;
+see fuenf cr

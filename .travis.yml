@@ -6,10 +6,13 @@ env:
   - M32=-m32
 language: c
 compiler: gcc
-sudo: true
+dist: trusty
+sudo: required
 before_install: ./install-deps.sh
 script:
   - ./autogen.sh
-  - if [ "${TRAVIS_OS_NAME}" = osx ]; then export CC=gcc-6; fi
+  - export CC=gcc
+  - if [ "${TRAVIS_OS_NAME}" = osx ]; then gcc -v; gcc-8 -v; export CC=gcc-8; fi
   - ./configure --enable-lib CC="$CC $M32"
   - make
+  - for i in misc r8c 8086 c165; do ./build-ec $i; done

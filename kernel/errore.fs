@@ -1,6 +1,6 @@
 \ ERRORE.FS English error strings                      9may93jaw
 
-\ Copyright (C) 1995,1996,1997,1998,1999,2000,2003,2006,2007,2012,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,1999,2000,2003,2006,2007,2012,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -36,10 +36,16 @@ decimal
 \ error numbers between -512 and -2047 are for OS errors and are
 \ handled with strerror
 
+: .warning ( addr -- ) @ count type ;
+\ closure technique, implemented by hand:
+\ : c(warning") [{: s :}l s count type ;] true swap ?warning ;
 : c(warning") ( c-addr -- )
-    count true ['] type ?warning ;
+    [ cell 4 = [IF] ] false >l [ [THEN] ]
+    >l ['] .warning >body >l dodoes: >l
+    true laddr# [ 0 , ] ?warning lp+!# [ 3 cell 4 = - cells , ] ;
 
 has? OS [IF]
+: >exec  >r ;
 : >stderr ( -- )
     r> op-vector @ >r debug-vector @ op-vector !
     >exec  r> op-vector ! ;
@@ -73,22 +79,50 @@ has? OS [IF]
     s>d tuck dabs <# #s rot sign s" error #" holds #> r> base ! ;
 
 has? OS [IF]
-    $660 Value default-color
-    $E60 Value err-color
-    $B60 Value warn-color
-    $D60 Value info-color
-    : white-colors ( -- )
-	\G for white background
-	$660 to default-color
-	$E60 to err-color
-	$B60 to warn-color
-	$D60 to info-color ;
-    : black-colors ( -- )
-	\G for black background
-	$660 to default-color
-	$C61 to err-color
-	$961 to warn-color
-	$D61 to info-color ;
+    $6600 Value default-color ( -- x ) \ gforth
+    \G use system-default color
+    $E600 Value error-color   ( -- x ) \ gforth
+    \G error color: red
+    $B600 Value warning-color ( -- x ) \ gforth
+    \G color for warnings: blue/yellow on black terminals
+    $D600 Value info-color    ( -- x ) \ gforth
+    \G color for info: green/cyan on black terminals
+    $D600 Value success-color ( -- x ) \ gforth
+    \G color for success: green
+    $6601 Value input-color   ( -- x ) \ gforth
+    \G color for user-input: black/white (both bold)
+    true Value white?
+    \G reset to current colors
+    : white-colors ( -- ) \ gforth
+	\G color theme for white background
+	true to white?
+	$6600 to default-color
+	$E600 to error-color
+	$B600 to warning-color
+	$D600 to info-color
+	$D600 to success-color
+	$6601 to input-color ;
+    : black-colors ( -- ) \ gforth
+	\G color theme for black background
+	false to white?
+	$6600 to default-color
+	$E601 to error-color
+	$C601 to warning-color
+	$9601 to info-color
+	$D601 to success-color
+	$6601 to input-color ;
+    : no-colors ( -- ) \ gforth
+	\G use the default color
+	false to white?
+	$6600 to default-color \ reset colors even in no-color mode
+	false to error-color
+	false to warning-color
+	false to info-color
+	false to success-color
+	false to input-color ;
+    : magenta-input ( -- ) \ gforth
+	\G make input color easily recognizable (useful in presentations)
+        $A601 white? + to input-color ;
 [THEN]
 
 : .error ( n -- )

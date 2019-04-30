@@ -1,6 +1,6 @@
 \ ekey etc.
 
-\ Copyright (C) 1999,2002,2003,2004,2005,2006,2007,2008,2009,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1999,2002,2003,2004,2005,2006,2007,2008,2009,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -32,7 +32,7 @@
 \ The keycode names are compatible with pfe-0.9.14
 
 $80000000 constant keycode-start
-$80000019 constant keycode-limit
+$80000020 constant keycode-limit
 
 create keycode-table keycode-limit keycode-start - cells allot
 
@@ -67,7 +67,7 @@ $4 mask-shift# lshift constant k-ctrl-mask ( -- u )  \ X:ekeys
     simple-fkey-string type
     dup k-shift-mask and if ."  k-shift-mask or" then
     dup k-ctrl-mask  and if ."  k-ctrl-mask or"  then
-        k-alt-mask   and if ."  k-alt-mask or"   then ;
+    ( ) k-alt-mask   and if ."  k-alt-mask or"   then ;
 
 keycode-start
 keycode k-left   ( -- u ) \ X:ekeys  
@@ -102,9 +102,16 @@ keycode k-f11 ( -- u ) \ X:ekeys
 keycode k-f12 ( -- u ) \ X:ekeys
 
 keycode k-winch ( -- u ) \ gforth
-keycode k-eof ( -- u ) \ gforth
+keycode k-pause ( -- u ) \ gforth
+keycode k-mute  ( -- u ) \ gforth
+keycode k-volup ( -- u ) \ gforth
+keycode k-voldown ( -- u ) \ gforth
+keycode k-backspace ( -- u ) \ gforth
+keycode k-tab ( -- u ) \ gforth
+keycode k-sel ( -- u ) \ gforth - keycode for Android selections
+keycode k-eof ( -- u ) \ gforth, always the last gforth-specific keycode
 drop
-    
+
 ' k-f1  alias k1  ( -- u ) \ gforth-obsolete
 ' k-f2  alias k2  ( -- u ) \ gforth-obsolete
 ' k-f3  alias k3  ( -- u ) \ gforth-obsolete
@@ -153,11 +160,13 @@ Variable key-buffer
 : char-append-buffer ( c addr -- )
     >r { c^ ins-char }  ins-char 1 r> 0 $ins ;
 
+: inskey@ ( -- c )
+    key-buffer $@ drop c@
+    key-buffer 0 1 $del ;
 : buf-key ( -- c )
     \ buffered key
     key-buffer $@len if
-	key-buffer $@ drop c@
-	key-buffer 0 1 $del
+	inskey@
     else
 	defers key-ior
     then ;
@@ -194,18 +203,22 @@ Variable ekey-buffer
     THEN
     0 ;
 
+: clear-ekey-buffer ( -- )
+    ekey-buffer $off ;
+
 : esc-prefix ( -- u )
-    key? ?dup-0=-if  1 ms key?  endif \ wait 1 ms to let keys through
-    if
-	key ekey-buffer c$+!
-	ekey-buffer $@ esc-mask >r
-        esc-sequences search-wordlist
-        if
-            execute r> or exit
-	endif
-	rdrop
-    endif
-    ekey-buffer $@ unkeys #esc ;
+    BEGIN
+	key? \ ?dup-0=-if  1 ms key?  endif \ workaround for Windows 1607 Linux
+    WHILE
+	    key ekey-buffer c$+!
+	    ekey-buffer $@ esc-mask >r
+	    esc-sequences search-wordlist
+	    if
+		execute r> or clear-ekey-buffer exit
+	    endif
+	    rdrop
+    REPEAT
+    ekey-buffer $@ unkeys #esc clear-ekey-buffer ;
 
 : esc-sequence ( u1 addr u -- ; name execution: -- u2 ) recursive
     \ define escape sequence addr u (=name) to have value u1; if u1=0,
@@ -232,72 +245,76 @@ Variable ekey-buffer
 \ a documentation file. Do this because key sequences [ and OR here clash with
 \ standard names and so prevent them appearing in the documentation. 
 [IFUNDEF] put-doc-entry
-get-current esc-sequences set-current
+    get-current esc-sequences set-current
 
-\ esc sequences (derived by using key-sequence in an xterm)
-k-left   s" [D" esc-sequence
-k-right  s" [C" esc-sequence
-k-up     s" [A" esc-sequence
-k-down   s" [B" esc-sequence
-k-home   s" [H" esc-sequence
-k-end    s" [F" esc-sequence
-k-prior  s" [5~" esc-sequence
-k-next   s" [6~" esc-sequence
-k-insert s" [2~" esc-sequence
-k-delete s" [3~" esc-sequence
+    \ esc sequences (derived by using key-sequence in an xterm)
+    k-left   s" [D" esc-sequence
+    k-right  s" [C" esc-sequence
+    k-up     s" [A" esc-sequence
+    k-down   s" [B" esc-sequence
+    k-home   s" [H" esc-sequence
+    k-end    s" [F" esc-sequence
+    k-prior  s" [5~" esc-sequence
+    k-next   s" [6~" esc-sequence
+    k-insert s" [2~" esc-sequence
+    k-delete s" [3~" esc-sequence
+    k-tab    k-shift-mask or s" [Z" esc-sequence
 
-k-enter  k-shift-mask or s" OM" esc-sequence
-k-enter  k-alt-mask or   s" x" over #cr swap c! esc-sequence
-k-enter  k-alt-mask or k-shift-mask or s" eOM" over #esc swap c! esc-sequence
+    k-enter  k-shift-mask or s" OM" esc-sequence
+    k-enter  k-alt-mask or   s" x" over #cr swap c! esc-sequence
+    k-enter  k-alt-mask or k-shift-mask or s" eOM" over #esc swap c! esc-sequence
+    k-backspace k-alt-mask or   s" D" over #del swap c! esc-sequence
 
-k1      s" OP"  esc-sequence
-k2      s" OQ"  esc-sequence
-k3      s" OR"  esc-sequence
-k4      s" OS"  esc-sequence
-k5      s" [15~" esc-sequence
-k6      s" [17~" esc-sequence
-k7      s" [18~" esc-sequence
-k8      s" [19~" esc-sequence
-k9      s" [20~" esc-sequence
-k10     s" [21~" esc-sequence
-k11     s" [23~" esc-sequence
-k12     s" [24~" esc-sequence
+    k1      s" OP"  esc-sequence
+    k2      s" OQ"  esc-sequence
+    k3      s" OR"  esc-sequence
+    k4      s" OS"  esc-sequence
+    k5      s" [15~" esc-sequence
+    k6      s" [17~" esc-sequence
+    k7      s" [18~" esc-sequence
+    k8      s" [19~" esc-sequence
+    k9      s" [20~" esc-sequence
+    k10     s" [21~" esc-sequence
+    k11     s" [23~" esc-sequence
+    k12     s" [24~" esc-sequence
 
-\ esc sequences from Linux console:
+    \ esc sequences from Linux console:
 
-k1       s" [[A" esc-sequence
-k2       s" [[B" esc-sequence
-k3       s" [[C" esc-sequence
-k4       s" [[D" esc-sequence
-k5       s" [[E" esc-sequence
-\ k-delete s" [3~" esc-sequence \ duplicate from above
-k-home   s" [1~" esc-sequence
-k-end    s" [4~" esc-sequence
+    k1       s" [[A" esc-sequence
+    k2       s" [[B" esc-sequence
+    k3       s" [[C" esc-sequence
+    k4       s" [[D" esc-sequence
+    k5       s" [[E" esc-sequence
+    \ k-delete s" [3~" esc-sequence \ duplicate from above
+    k-home   s" [1~" esc-sequence
+    k-end    s" [4~" esc-sequence
 
-s-k1 s" [25~" esc-sequence
-s-k2 s" [26~" esc-sequence
-s-k3 s" [28~" esc-sequence
-s-k4 s" [29~" esc-sequence
-s-k5 s" [31~" esc-sequence
-s-k6 s" [32~" esc-sequence
-s-k7 s" [33~" esc-sequence
-s-k8 s" [34~" esc-sequence
+    s-k1 s" [25~" esc-sequence
+    s-k2 s" [26~" esc-sequence
+    s-k3 s" [28~" esc-sequence
+    s-k4 s" [29~" esc-sequence
+    s-k5 s" [31~" esc-sequence
+    s-k6 s" [32~" esc-sequence
+    s-k7 s" [33~" esc-sequence
+    s-k8 s" [34~" esc-sequence
 
-\ esc sequences for MacOS X iterm <e7a7c785-3bea-408b-94e9-4b59b008546f@x16g2000prn.googlegroups.com>
-k-left   s" OD" esc-sequence
-k-right  s" OC" esc-sequence
-k-up     s" OA" esc-sequence
-k-down   s" OB" esc-sequence
+    \ esc sequences for MacOS X iterm <e7a7c785-3bea-408b-94e9-4b59b008546f@x16g2000prn.googlegroups.com>
+    k-left   s" OD" esc-sequence
+    k-right  s" OC" esc-sequence
+    k-up     s" OA" esc-sequence
+    k-down   s" OB" esc-sequence
 
+    k-pause   s" [P" esc-sequence
+    k-mute    s" VM" esc-sequence
+    k-volup   s" VU" esc-sequence
+    k-voldown s" VD" esc-sequence
+
+    k-sel     s" [S"  esc-sequence
 set-current
 [ENDIF]
 
-: clear-ekey-buffer ( -- )
-    ekey-buffer $off ;
-
 [IFDEF] max-single-byte
     : read-xkey ( key -- flag )
-	clear-ekey-buffer
 	ekey-buffer c$+!
 	ekey-buffer $@ x-size 1 +do
 	    key? 0= ?leave
@@ -326,8 +343,7 @@ set-current
     dup EOK = IF  drop k-eof  EXIT  THEN
     dup #esc =
     if
-        drop clear-ekey-buffer
-        esc-prefix  exit
+        drop esc-prefix  exit
     then
     [IFDEF] max-single-byte
 	get-xkey
@@ -363,39 +379,7 @@ set-current
 
 \ integrate ekey into line editor
 
-Variable vt100-modifier
-
-: ctrl-i ( "<char>" -- c )
-    char toupper $40 xor ;
-
-' ctrl-i
-:noname
-    ctrl-i postpone Literal ;
-interpret/compile: ctrl  ( "<char>" -- ctrl-code )
-
-keycode-limit keycode-start - buffer: ekey>ctrl
-
-: ekey-bind ( ctrl-key ekey -- )
-    keycode-start - ekey>ctrl + c! ;
-
-ctrl B k-left   ekey-bind
-ctrl F k-right  ekey-bind
-ctrl P k-up     ekey-bind
-ctrl N k-down   ekey-bind
-ctrl A k-home   ekey-bind
-ctrl E k-end    ekey-bind
-ctrl X k-delete ekey-bind
-ctrl L k-winch  ekey-bind
-ctrl D k-eof    ekey-bind
-
-: edit-ekey ( -- key )
-    ekey dup k-left u>= IF
-	dup [ 1 mask-shift# lshift 1- ]l and ekey>ctrl + c@
-	swap mask-shift# rshift 7 and vt100-modifier !
-    ELSE  vt100-modifier off
-    THEN ;
-
-' edit-ekey is edit-key
+' ekey is edit-key
 
 \G True if a keyboard event is available.
 

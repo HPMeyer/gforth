@@ -43,13 +43,15 @@ s" Not an Exif chunk" exception Constant !!no-exif!!
     jpeg-fd reposition-file throw ;
 
 : search-exif ( -- len )
-    BEGIN  read-tag dup $D9 = IF  drop 0  EXIT  THEN
+    BEGIN  read-tag dup $D9 $DB within IF  drop 0  EXIT  THEN
 	$E1 <>  WHILE  read-len jpeg+seek  REPEAT
     read-len ;
 
-: >exif ( addr u -- )
+: >exif ( addr u -- flag )
     r/o open-file throw to jpeg-fd ?soi search-exif
-    jpeg-fd file-position throw drop + to exif-end ;
+    dup 0= ?EXIT
+    jpeg-fd file-position throw drop + to exif-end
+    true ;
 
 \ exif tags
 
@@ -68,12 +70,13 @@ s" Not an Exif chunk" exception Constant !!no-exif!!
     r@ allocate throw dup r> jpeg-fd read-file throw
     2r> jpeg-fd reposition-file throw ;
 
+: ex>< ( n1 n2 -- n3 n4 )  exif-endian IF  swap  THEN ;
+: exb ( -- byte )
+    jpeg-fd key-file ;
 : exw ( -- word )
-    jpeg-fd key-file  jpeg-fd key-file
-    exif-endian IF  swap  THEN  8 lshift or ;
-
+    exb exb ex><  8 lshift or ;
 : exl ( -- long )
-    exw exw    exif-endian IF  swap  THEN  16 lshift or ;
+    exw exw ex>< 16 lshift or ;
 
 : >exif-start ( -- )
     jpeg-fd file-position throw drop to exif-start ;
@@ -112,15 +115,26 @@ DOES> + c@ ;
 
 0 Value thumb-off
 0 Value thumb-len
+0 Value img-orient
 
 : >thumb ( -- )
     exw 0 ?DO
-	exw exw exl exl { cmd type len offset }
-	cmd $201 = IF  offset to thumb-off  THEN
-	cmd $202 = IF  offset to thumb-len  THEN
+	exw exw exl { cmd type len }
+	exl case cmd
+	    $112 of  to img-orient  endof
+	    $201 of  to thumb-off   endof
+	    $202 of  to thumb-len   endof
+	    nip
+	endcase
     LOOP ;
 
+: >thumb-scan ( fn-addr u1 -- )
+    0 to img-orient  0 to thumb-off  0 to thumb-len
+    >exif IF  ?exif exw 12 * jpeg+seek exl exif-seek >thumb  THEN ;
+
+: exif-close ( -- )
+    jpeg-fd ?dup-IF   close-file 0 to jpeg-fd throw  THEN ;
+: thumbnail@ ( -- addr u )
+    thumb-len thumb-off exif-slurp ;
 : >thumbnail ( fn-addr u1 -- jpeg-addr u2 )
-    >exif ?exif exw 12 * jpeg+seek exl exif-seek >thumb
-    thumb-len thumb-off exif-slurp
-    jpeg-fd close-file throw 0 to jpeg-fd ;
+    >thumb-scan thumbnail@ exif-close ;

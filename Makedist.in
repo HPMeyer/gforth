@@ -3,7 +3,7 @@
 #make dist targets (workaround for broken makes)
 #use GNU make if your make does not grok this.
 
-#Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2008,2010,2011,2012,2014,2015,2016 Free Software Foundation, Inc.
+#Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2008,2010,2011,2012,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -74,7 +74,7 @@ ddocdist:	$(DOCDIST)
 		-$(RMTREE) gforth-$(VERSION)
 
 dhtmldist:	html
-		$(TAR) html|$(COMPRESS) >gforth-html-$(VERSION).tar$(COMPEXT)
+		(cd doc; $(TAR) gforth)|$(COMPRESS) >gforth-html-$(VERSION).tar$(COMPEXT)
 
 #a binary distribution contains the complete source distribution,
 # the objects, the executable and the links. the objects are there for making
@@ -114,5 +114,6 @@ dsetup-debdist:	$(SOURCES) $(FORTH_GEN0) $(FORTH_GEN_FAST) @GKERNEL@ $(DOCDIST) 
 		make package=$$PWD/debian install
 
 ddebdist:
-		dpkg-buildpackage -d -b $(DEBARCH)
+		-$(RM) libltdl/config.status
+		dpkg-buildpackage -uc -us -d -b $(DEBARCH)
 

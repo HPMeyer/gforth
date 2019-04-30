@@ -1,6 +1,6 @@
 \ startup file
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -28,42 +28,34 @@ require except.fs \ included on command line
 [THEN]
 
 warnings off
-include search.fs
-include options.fs
-include environ.fs
-include ~+/envos.fs
-include errors.fs
-include extend.fs              \ load core-extended
-include compat/caseext.fs
-include hash.fs
-
-[ifundef] xemit
-    require kernel/xchars.fs
-[then]
-\ require interpretation.fs
-\ include float.fs
-\ include search.fs
+require search.fs
+require options.fs
+require environ.fs
+require ~+/envos.fs
+require errors.fs
+require hash.fs
 require compat/strcomp.fs
-include glocals.fs
+require glocals.fs
+require iloops.fs
 require float.fs
 require stuff.fs
-include wordinfo.fs
-include vt100.fs
-\ include colorize.fs
-include bufio.fs
+require closures.fs
+require wordinfo.fs
+require vt100.fs
+require bufio.fs
 require utf-8.fs
-\ include vt100key.fs \ ekey.fs now does the same
 require debugs.fs
 require assert.fs
+require smartdots.fs
 require blocks.fs
-\ require intcomp.fs
 require savesys.fs
 require table.fs
 require ekey.fs
-include history.fs
+require history.fs
 require quotes.fs
-require quotedstring.fs
-require parsedto.fs
+require rec-string.fs
+require rec-to.fs
+require rec-tick.fs
 require substitute.fs
 require code.fs
 require see.fs
@@ -77,7 +69,10 @@ require libcc.fs
 require prelude.fs
 require str-exec.fs
 require gforthrc.fs
-include ansi.fs
+require ansi.fs
+\ require colorize.fs
+require obsolete.fs
+require locate1.fs
 
 \ define the environmental queries for all the loaded wordsets
 \ since the blocks wordset is loaded in a single file, its queries

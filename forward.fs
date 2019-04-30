@@ -1,6 +1,6 @@
 \ forward definitions
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,31 +17,71 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-\ caveat: forwards don't work with words that use locals!
+\ This implementation relies on return address manipulation and
+\ specific threaded-code properties
 
-: forward, ( xt -- )
-    >body ['] call peephole-compile, here swap !@ , ;
+\ note that there are related words with the same name here and in
+\ forward1.fs, but they behave differently.
+
+s" unresolved forward definition" exception constant unresolved-forward
+s" forward must be resolved with :" exception constant forward-needs-:
+
+: unresolved-forward-error ( -- )
+    unresolved-forward throw ;
+
+: unfixed-forward ( ... -- ... )
+    \ the compiled code for a forward child branches to this word,
+    \ which patches the call to the forward word; if the word has not
+    \ been resolved, this produces an error after patching the call to
+    \ report an error.
+    r@ cell- {: target :}
+    target @ cell- @ dup >body target !
+    execute-exit ;
 
 : forward ( "name" -- )
-    \G create a forward reference
-    Create 0 , compile-only ['] forward, set-optimizer ;
+    \g Defines a forward reference to a colon definition.  Defining a
+    \g colon definition with the same name in the same wordlist
+    \g resolves the forward references.  Use @code{.unresolved} to
+    \g check whether any forwards are unresolved.
+    defer ['] unresolved-forward-error lastxt defer!
+    ['] branch peephole-compile, ['] unfixed-forward >body ,
+    [: ['] call peephole-compile, >body cell+ , ;] set-optimizer ;
 
-: resolve-fwds ( addr -- ) \ resolve forward refereneces
-    BEGIN  dup  WHILE  here >body swap !@  REPEAT  drop ;
+: is-forward? ( xt -- f )
+    \ f is true if xt is an unresolved forward definition
+    dup >code-address dodefer: = if
+        >body @ ['] unresolved-forward-error = exit then
+    drop false ;
 
 : auto-resolve ( addr u wid -- )
     \G auto-resolve the forward reference in check-shadow
-    dup 2over rot find-name-in  dup IF
-	dup >namevt @ >vtcompile, @ ['] forward, = IF
-	    0 swap >body !@ resolve-fwds  drop 2drop  EXIT
-	THEN
-    THEN  drop
-    defers check-shadow ;
+    dup 2over rot find-name-in dup if
+	dup is-forward? if
+	    latestxt >code-address docol: <> forward-needs-: and throw
+            latestxt swap defer! 2drop drop exit then then
+    drop defers check-shadow ;
 
 ' auto-resolve is check-shadow
 
 : .unresolved ( -- )
     \G print all unresolved forward references
-    [: [: dup >namevt @ >vtcompile, @ ['] forward, = IF
-		dup >body @ [: dup .name ." is unresolved" cr ;] ?warning
-	    THEN  drop true ;] swap traverse-wordlist ;] map-vocs ;
+    [: [:   replace-sourceview >r dup name>view @ to replace-sourceview
+	    dup is-forward? [: dup .name ." is unresolved" cr ;] ?warning
+	    r> to replace-sourceview
+            drop true ;] swap traverse-wordlist ;] map-vocs ;
+
+\ testing
+0 [if]
+    forward forward1
+    see forward1
+    ' forward1 is-forward? cr .
+    : forward2 forward1 ;
+    ' forward2 5 cells dump
+    ' forward2 catch cr .
+    ' forward1 6 cells
+    : forward1 285 ;
+    dump
+    forward2 .
+    ' forward2 5 cells dump
+    .s
+[then]

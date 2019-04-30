@@ -1,6 +1,6 @@
 \ vtables.fs does the intelligent compile, vtable handling
 
-\ Copyright (C) 2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2013,2014,2015,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -29,16 +29,24 @@
 : field+, >body @ ['] lit+ peephole-compile, , ;
 : abi-code, >body ['] abi-call peephole-compile, , ;
 : ;abi-code, ['] ;abi-code-exec peephole-compile, , ;
-: does, ['] does-exec peephole-compile, , ;
+: does, ['] does-xt peephole-compile, , ;
 : umethod, >body cell+ 2@ ['] u#exec peephole-compile, , , ;
 : uvar, >body cell+ 2@ ['] u#+ peephole-compile, , , ;
 \ : :loc, >body ['] call-loc peephole-compile, , ;
 
-: (uv!) ( xt addr -- ) 2@ next-task + @ cell- @ swap cells + ! ;
+: (uv) ( xt addr -- ) 2@ next-task + @ cell- @ swap cells + ;
 : umethod! ( xt xt-method -- )
-    >body cell+ (uv!) ;
-comp: ( xt-method xt-to --)
-    drop >body cell+ postpone Aliteral postpone (uv!) ;
-: umethod@ ( addr -- xt ) >body cell+ 2@ next-task + @ cell- @ swap cells + @ ;
+    \ this is not a proper word, but a TO: OPT-TO: word (but the
+    \ cross-compiler does not implement them).
+    >body cell+ (uv) ! ;
+opt: ( xt-method xt-to -- )
+    drop >body cell+ lit, postpone (uv) postpone ! ;
+
+: umethod@ ( addr -- xt )
+    \ this is not a proper word, but a DEFER@: OPT-DEFER@: word (but
+    \ the cross-compiler does not implement them).
+    >body cell+ (uv) @ ;
+opt: ( xt-method xt-defer@ -- )
+    drop >body cell+ lit, postpone (uv) postpone @ ;
 
 AVariable vtable-list

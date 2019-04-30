@@ -1,6 +1,6 @@
 /* a simple sincos implementation
 
-  Copyright (C) 2012 Free Software Foundation, Inc.
+  Copyright (C) 2012,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -17,6 +17,7 @@
   You should have received a copy of the GNU General Public License
   along with this program; if not, see http://www.gnu.org/licenses/.
 */
+#include "config.h"
 #include <math.h>
 
 void sincos(double x, double *s, double *c)

@@ -1,6 +1,6 @@
 \ WORDINFO.FS  V1.0                                    17may93jaw
 
-\ Copyright (C) 1995,1996,1998,2000,2003,2007,2012,2013,2014 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1998,2000,2003,2007,2012,2013,2014,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -26,19 +26,6 @@ require look.fs
 \ Wordinfo is a tool that checks a nfa
 \ and finds out what wordtype we have
 \ it is used in SEE.FS
-
-\ the old alias? did not work and it is not used, so I changed
-\ it in many respects - anton
-
-: alias? ( nfa1 -- nfa2|0 )
-    \ if nfa1 is an alias, nfa2 is the name of the original word.
-    \ if the original word has no name, return 0.
-    dup >f+c @ alias-mask and 0=
-    IF ( nfa1 )
-	((name>)) @ >name
-    ELSE
-	drop 0
-    THEN ;
 
 : var?  ( nfa -- flag )
     ((name>)) >code-address dovar: = ;

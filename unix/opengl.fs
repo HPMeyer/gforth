@@ -1,6 +1,6 @@
 \ wrapper to load Swig-generated libraries
 
-\ Copyright (C) 2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -20,29 +20,9 @@
 Vocabulary opengl
 get-current also opengl definitions
 
-c-library opengl
-    \c #define GL_GLEXT_PROTOTYPES
-    e? os-type s" cygwin" str= [IF]
-	\c #include <w32api/GL/gl.h>
-	\c #include <w32api/GL/glext.h>
-	\c #include <w32api/GL/wglext.h>
-    [ELSE]
-	\c #include <GL/glx.h>
-	\c #include <GL/glext.h>
-    [THEN]
-    
-    e? os-type s" cygwin" str= [IF]
-	s" opengl32" add-lib
-    
-	include unix/glwin.fs
-	include unix/wgl.fs
-    [ELSE]
-	s" GL" add-lib
-    
-	include unix/gl.fs
-	include unix/glx.fs
-    [THEN]
-    
-end-c-library
+include unix/gl.fs
+e? os-type s" cygwin" str= 0= [IF]
+    include unix/glx.fs
+[THEN]
 
 previous set-current

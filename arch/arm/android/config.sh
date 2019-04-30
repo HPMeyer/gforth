@@ -1,4 +1,4 @@
-#Copyright (C) 2015,2016 Free Software Foundation, Inc.
+#Copyright (C) 2015,2016,2017 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -70,7 +70,8 @@ ac_cv_file___arch_arm_disasm_fs=yes
 ac_cv_func_dlopen=yes
 ac_cv_lib_ltdl_lt_dlinit=no
 ac_export_dynamic=no
-HOSTCC="gcc -m32"
+ac_cv_func_mcheck=no
+HOSTCC="gcc -m32 -D__ANDROID_API__=19"
 GNU_LIBTOOL="arm-linux-androideabi-libtool --tag=CC"
 LIBTOOL="arm-linux-androideabi-libtool --tag=CC"
 build_libcc_named=build-libcc-named

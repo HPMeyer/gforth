@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#Copyright (C) 2008,2011,2012,2016 Free Software Foundation, Inc.
+#Copyright (C) 2008,2011,2012,2016,2017,2018 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -22,7 +22,12 @@ VERSION=@PACKAGE_VERSION@
 @NO_CROSS@test -z "$ENGINE" && ENGINE=./gforth
 @NO_CROSS@test -f "@srcdir@/@kernel_fi@" && KERNEL="@srcdir@/@kernel_fi@"
 @NO_CROSS@test -f "@kernel_fi@" && KERNEL="@kernel_fi@"
-export C_INCLUDE_PATH=@srcdir@/include/gforth/$VERSION/$machine
+export libccdir=$PWD/lib/gforth/$VERSION/$machine/libcc-named/
+if test -n "$C_INCLUDE_PATH"; then
+    export C_INCLUDE_PATH="@srcdir@/include/gforth/$VERSION/$machine:@srcdir@/engine:$C_INCLUDE_PATH"
+else
+    export C_INCLUDE_PATH="@srcdir@/include/gforth/$VERSION/$machine:@srcdir@/engine"
+fi
 if test -f "$ENGINE" -a -f "$KERNEL"; then 
   $ENGINE --die-on-signal -i @kernel_fi@ "$@"
 else

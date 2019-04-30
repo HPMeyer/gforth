@@ -1,7 +1,7 @@
 /*
   This is the machine-specific part for ARM processors
 
-  Copyright (C) 2000,2003,2004,2005,2007,2008,2011,2016 Free Software Foundation, Inc.
+  Copyright (C) 2000,2003,2004,2005,2007,2008,2011,2016,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -35,8 +35,10 @@
 /* this calls a dummy function in cacheflush0.S */
 /* you can replace it through "./configure arm_cacheflush=<file>" */
 /* if you know how to flush the icache on the arm in general, mail me */
-#define FLUSH_ICACHE(addr,size) gforth_cacheflush(addr,size)
+#ifndef FLUSH_ICACHE
 void gforth_cacheflush(void *p, size_t size);
+# define FLUSH_ICACHE(addr,size) gforth_cacheflush(addr,size)
+#endif
 
 #if defined(FORCE_REG) && !defined(DOUBLY_INDIRECT) && !defined(VM_PROFILING)
 /*

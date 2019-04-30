@@ -1,6 +1,6 @@
 \ command line edit and history support                 16oct94py
 
-\ Copyright (C) 1995,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,17 +17,47 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-Defer edit-update ( span addr pos1 -- span addr pos1 )
-\G deferred word to keep an editor informed about the command line content
-' noop is edit-update
+require user-object.fs
+require mkdir.fs
+
+edit-out next-task - class-o !
+
+kernel-editor cell- @ 2 cells - 2@ \ extend edit-out class
+umethod paste! ( addr u -- )
+umethod grow-tib ( max span addr pos1 more -- max span addr pos1 flag )
+umethod edit-error
+umethod ekeys
+cell uvar edit-curpos
+cell uvar screenw
+cell uvar setstring$ \ additional string at cursor for IME
+
+Variable paste$ \ global paste buffer
+
+align , , here
+' (ins) , ' (ins-string) , ' (edit-control) ,
+' noop ,  ' noop , ' noop , ' std-ctrlkeys , \ kernel stuff
+' noop ,  ' 0> , ' bell , ' noop , \ extended stuff
+, here  0 , 0 , 0 , 0 , 0 , 0 ,
+Constant edit-terminal
+edit-terminal cell- @ Constant edit-terminal-c
+edit-terminal edit-out !
 
 \ command line editing                                  16oct94py
 
-: >string  ( span addr pos1 -- span addr pos1 addr2 len )
+: >edit-rest  ( span addr pos1 -- span addr pos1 addr2 len )
     \G get rest of the string
     over 3 pick 2 pick chars /string ;
 
 : bindkey ( xt key -- )  cells ctrlkeys + ! ;
+: ebindkey ( xt key -- )  keycode-start - cells ekeys + ! ;
+
+: ctrl-i ( "<char>" -- c )
+    char toupper $40 xor ;
+
+' ctrl-i
+:noname
+    ctrl-i postpone Literal ;
+interpret/compile: ctrl  ( "<char>" -- ctrl-code )
 
 \ history support                                       16oct94py
 
@@ -36,44 +66,40 @@ Defer edit-update ( span addr pos1 -- span addr pos1 )
 2Variable forward^
 2Variable backward^
 2Variable end^
+Variable vt100-modifier \ shift, ctrl, alt
+
+[IFUNDEF] -scan
+    : -scan ( addr u char -- addr' u' )
+	>r  BEGIN  dup  WHILE  1- 2dup + c@ r@ =  UNTIL  THEN
+	rdrop ;
+[THEN]
 
 : force-open ( addr len -- fid )
     2dup r/w open-file
     IF
-	drop r/w create-file throw
+	drop
+	2dup '/' -scan $1FF mkdir-parents drop
+	r/w create-file throw
     ELSE
 	nip nip
     THEN ;
 
 : history-file ( -- addr u )
     s" GFORTHHIST" getenv dup 0= IF
-	2drop s" ~/.gforth-history"
+	\ !!TODO!! use ~/.config/gforth and ~/.cache/gforth instead of ~/
+	\ 2drop s" ~/.cache/gforth/history"
+	2drop s" ~/.local/share/gforth/history"
     THEN ;
 
 \ moving in history file                               16oct94py
 
-defer back-restore ( u -- )
-defer cur-correct ( addr u -- )
-' backspaces IS back-restore
-' 2drop IS cur-correct
+: edit-curpos-off  edit-curpos off  edit-linew off  cols screenw ! ;
 
-Variable linew
-Variable linew-all
-Variable screenw
-Variable setstring \ additional string at cursor for IME
-: linew-off  linew off cols screenw ! ;
+: clear-line ( max span addr pos1 -- max addr )
+    drop nip ;
 
-[IFDEF] x-width
-: clear-line ( max span addr pos1 -- max addr )
-    drop linew @ back-restore
-    2dup swap x-width setstring $@ x-width +
-    dup spaces back-restore nip linew off ;
-[ELSE]
-: clear-line ( max span addr pos1 -- max addr )
-  back-restore over spaces swap back-restore ;
-[THEN]
-\ : clear-tib ( max span addr pos -- max 0 addr 0 false )
-\   clear-line 0 tuck dup ;
+: xretype ( max span addr pos1 -- max span addr pos1 f )
+    edit-update false ;
 
 : hist-pos    ( -- ud )
     history ?dup-IF  file-position drop  ELSE  backward^ 2@  THEN ;
@@ -89,7 +115,7 @@ Variable setstring \ additional string at cursor for IME
   forward^ 2@ 2dup hist-setpos backward^ 2!
   2dup get-line drop
   hist-pos  forward^ 2!
-  tuck 2dup type 2dup cur-correct edit-update 0 ;
+  tuck xretype ;
 
 : find-prev-line ( max addr -- max span addr pos2 )
   backward^ 2@ forward^ 2!
@@ -101,7 +127,7 @@ Variable setstring \ additional string at cursor for IME
   REPEAT  2drop  THEN  tuck ;
 
 : prev-line  ( max span addr pos1 -- max span addr pos2 false )
-    clear-line find-prev-line 2dup type 2dup cur-correct edit-update 0 ;
+    clear-line find-prev-line xretype ;
 
 \ Create lfpad #lf c,
 
@@ -121,12 +147,7 @@ Variable setstring \ additional string at cursor for IME
 
 Create prefix-found  0 , 0 ,
 
-: capscomp  ( c_addr1 u c_addr2 -- -1|0|1 )
-    swap bounds ?DO
-	count toupper i c@ toupper - ?dup-IF
-	    nip 0< 2* 1+ unloop exit THEN
-    LOOP
-    drop 0 ;
+0 value alphabetic-tab
 
 : word-lex ( nfa1 nfa2 -- -1/0/1 )
     dup 0=
@@ -134,12 +155,12 @@ Create prefix-found  0 , 0 ,
 	2drop 1  EXIT
     THEN
     name>string 2>r name>string
-    dup r@ =
+    vt100-modifier @ IF  2r> 2swap 2>r  THEN
+    dup r@ = alphabetic-tab or
     IF
-	rdrop r> capscomp 0<= EXIT
+	rdrop r> over capscompare 0<=  EXIT
     THEN
-    r> <
-    nip rdrop ;
+    r> < nip rdrop ;
 
 : search-voc ( addr len nfa1 nfa2 -- addr len nfa3 )
     >r
@@ -148,7 +169,7 @@ Create prefix-found  0 , 0 ,
     WHILE
 	>r dup r@ name>string nip <=
 	IF
-	    2dup r@ name>string drop capscomp  0=
+	    2dup r@ name>string drop over capscompare  0=
 	    IF
 		r> dup r@ word-lex
 		IF
@@ -176,79 +197,73 @@ Create prefix-found  0 , 0 ,
 	2drop s" " prefix-off
     THEN ;
 
-: search-prefix  ( addr1 len1 -- addr2 len2 )
+Defer search-prefix
+: simple-search-prefix  ( addr1 len1 -- addr2 len2 )
     0 vocstack $@ bounds cell- swap cell-
     -DO  I cell- 2@ <>
         IF  I @ wordlist-id @ swap  search-voc  THEN
     cell -LOOP
     prefix-string ;
+' simple-search-prefix is search-prefix
 
-: tib-full? ( max span addr pos addr' len' -- max span addr pos addr1 u flag )
-    5 pick over 4 pick + prefix-found @ 0<> - < ;
+: tib-full? ( max span addr pos addr' len' -- max span addr pos addr' len' flag )
+    5 pick over 4 pick + u< ;
 
 : kill-prefix  ( key -- key )
-  dup #tab <> IF  prefix-off  THEN ;
+  dup #tab <> over [ k-tab k-shift-mask or ]L <> and IF  prefix-off  THEN ;
 
 \ UTF-8 support
 
 require utf-8.fs
 
-\ : cygwin? ( -- flag ) s" TERM" getenv s" cygwin" str= ;
-\ : at-xy? ( -- x y )
-\     key? drop \ make sure prep_terminal() is executed
-\     #esc emit ." [6n"  0 0
-\     BEGIN  key dup 'R <>  WHILE
-\ 	    dup '; = IF  drop  swap  ELSE
-\ 		dup '0 '9 1+ within  IF  '0 - swap 10 * +  ELSE
-\ 		    drop  THEN  THEN
-\     REPEAT  drop 1- swap 1- ;
-\ : cursor@ ( -- n )  at-xy? screenw @ * + ;
-\ : cursor! ( n -- )  screenw @ /mod at-xy ;
-: xcur-correct  ( addr u -- )  x-width linew ! ;
-
-' xcur-correct IS cur-correct
-
 info-color Value setstring-color
 
-: color-execute ( color xt -- )
-    attr! catch default-color attr! throw ;
+\ retype an edited line: this is generic, every word should use edit-update
+\ and nothing else to redraw the edited string
 
-: xback-restore ( u -- )
+: xedit-startpos ( -- )
     \ correction for line=screenw, no wraparound then!
-    dup screenw @ mod 0= over 0> and \ flag, true=-1
+    edit-curpos @ dup screenw @ mod 0= over 0> and \ flag, true=-1
     dup >r + screenw @ /mod negate swap r> - negate swap at-deltaxy ;
-: .rest ( addr pos1 -- addr pos1 )
-    linew @ xback-restore 2dup type 2dup cur-correct ;
-: .all ( span addr pos1 -- span addr pos1 )
-    linew @ xback-restore
-    2dup type setstring $@
+: set-width+ ( width -- width' ) setstring$ $@ x-width + ;
+: .resizeline ( span addr pos -- span addr pos )
+    >r 2dup swap x-width set-width+
+    dup >r edit-linew @ u< IF
+	xedit-startpos  edit-linew @ spaces  edit-linew @ edit-curpos !
+    THEN
+    r> edit-linew !  r> ;
+: .all ( span addr pos -- span addr pos )
+    xedit-startpos  2dup type  setstring$ $@
     dup IF  ['] type setstring-color color-execute  ELSE  2drop  THEN
-    >r 2dup swap r@ /string type
-    2dup swap cur-correct setstring $@ x-width linew +! r>
-    linew @ linew-all ! edit-update ;
-: .redraw ( span addr pos1 -- span addr pos1 )
-    .all .rest ;
-
-: xretype ( max span addr pos1 -- max span addr pos1 f )
-    linew @ dup xback-restore  screenw @ /mod
-    cols dup screenw ! * + dup spaces linew !
-    .redraw false ;
+    >edit-rest type  edit-linew @ edit-curpos !  ;
+: .rest ( span addr pos -- span addr pos )
+    dup 3 pick = IF
+	2dup x-width set-width+ edit-curpos !  EXIT  THEN
+    xedit-startpos  2dup x-width set-width+ edit-curpos !
+    2dup type ;
+: xedit-update ( span addr pos1 -- span addr pos1 )
+    \G word to update the editor display
+    .resizeline .all .rest ;
 
 : xhide ( max span addr pos1 -- max span addr pos1 f )
-    linew @ xback-restore 2 pick dup spaces xback-restore
-    linew off  false ;
+    over 0 tuck edit-update 2drop drop  false ;
 
 \ In the following, addr max is the buffer, addr span is the current
 \ string in the buffer, and pos1 is the cursor position in the buffer.
 
-: <xins>  ( max span addr pos1 xc -- max span addr pos2 )
-    >r  2over r@ xc-size + u< IF  ( max span addr pos1 R:xc )
-	rdrop bell  EXIT  THEN
-    >string over r@ xc-size + swap move
+: xgrow-tib { max span addr pos1 more -- max span addr pos1 flag }
+    max span more + u>= IF  max span addr pos1 true  EXIT  THEN
+    addr tib = IF
+	span #tib !
+	span more + max#tib @ 2* umax expand-tib
+	max#tib @ span tib pos1 true EXIT  THEN
+    max span addr pos1 false ;
+
+: (xins)  ( max span addr pos1 xc -- max span addr pos2 )
+    >r  r@ xc-size grow-tib 0= IF  rdrop edit-error  EXIT  THEN
+    >edit-rest over r@ xc-size + swap move
     2dup chars + r@ swap r@ xc-size xc!+? 2drop drop
     r> xc-size >r  rot r@ chars + -rot r> chars + ;
-: (xins)  ( max span addr pos1 xc -- max span addr pos2 )
-    <xins> key? 0= IF  .redraw  THEN ;
 : xback  ( max span addr pos1 -- max span addr pos2 f )
     dup  IF
 	vt100-modifier @ IF
@@ -259,8 +274,8 @@ info-color Value setstring-color
 	ELSE
 	    over + xchar- over -
 	THEN
-	0 max .redraw
-    ELSE  bell  THEN 0 ;
+	0 max edit-update
+    ELSE  edit-error  THEN 0 ;
 : xforw  ( max span addr pos1 -- max span addr pos2 f )
     2 pick over <> IF
 	vt100-modifier @ IF
@@ -271,57 +286,64 @@ info-color Value setstring-color
 	ELSE
 	    over + xchar+ over -
 	THEN
-	.redraw
-    ELSE  bell  THEN 0 ;
+	edit-update
+    ELSE  edit-error  THEN  0 ;
 : (xdel)  ( max span addr pos1 -- max span addr pos2 )
     over + dup xchar- tuck - >r over -
-    >string over r@ + -rot move
+    >edit-rest over r@ + -rot move
     rot r> - -rot ;
 : xdel ( max span addr pos1 -- max span addr pos2 )
-    2dup + dup xchar- tuck - x-width >r
-    (xdel) .all r@ spaces r> linew +! .rest ;
+    (xdel) edit-update ;
 : ?xdel ( max span addr pos1 -- max span addr pos2 0 )
-    dup  IF  xdel  THEN  0 ;
+    vt100-modifier @ IF
+	BEGIN  dup  WHILE
+		2dup 1- + c@ bl u<= WHILE  (xdel)  REPEAT  THEN
+	BEGIN  dup  WHILE
+		2dup 1- + c@ bl u> WHILE  (xdel)  REPEAT  THEN
+	edit-update
+    ELSE  dup IF   xdel  THEN  THEN  0 ;
 : <xdel> ( max span addr pos1 -- max span addr pos2 0 )
+    vt100-modifier @ IF  ?xdel  EXIT  THEN  \ emacs binds Alt-Del to Alt-Backspace
     2 pick over <>
-    IF  xforw drop xdel  ELSE  bell  THEN  0 ;
+    IF  xforw drop xdel  ELSE  edit-error  THEN  0 ;
 : xeof  2 pick over or 0=  IF  -56 throw  ELSE  <xdel>  THEN ;
 
 : xfirst-pos  ( max span addr pos1 -- max span addr 0 0 )
-  drop 0 .redraw 0 ;
+  drop 0 xretype ;
 : xend-pos  ( max span addr pos1 -- max span addr span 0 )
-  drop over .all 0 ;
+  drop over xretype ;
 
-Variable paste$
-
-Defer paste!
 : xpaste! ( addr u -- )
     paste$ $! ;
-' xpaste! is paste!
 
 : xclear-rest ( max span addr pos -- max pos addr pos false )
-    rot >r tuck 2dup r> swap /string 2dup paste!
-    x-width dup spaces linew +! .all 0 ;
+    >edit-rest paste! rot drop tuck xretype ;
 
 : xclear-first ( max span addr pos -- max pos addr pos false )
-    2dup paste! linew @ xback-restore >r
-    2dup swap x-width dup spaces xback-restore  linew off
+    2dup paste!  >r
     2dup swap r@ /string 2 pick swap move
-    swap r> - swap 0 .redraw 0 ;
+    swap r> - swap 0 xretype ;
 
-: (xenter)  ( max span addr pos1 -- max span addr pos2 true )
-    >r 2dup swap -trailing nip IF
+: xins-string ( max span addr pos addr1 u1 -- max span' addr pos' )
+    2>r r@ grow-tib 0= IF  edit-error 2rdrop  EXIT  THEN
+    >edit-rest 2r@ 2swap r@ + insert
+    r@ + rot r> + -rot  rdrop ;
+
+: (xenter)  ( max span addr pos1 -- max span addr span true )
+    setstring$ $@ xins-string  setstring$ $free
+    drop 2dup swap -trailing nip IF
 	end^ 2@ hist-setpos
 	2dup swap history
 	?dup-IF  write-line drop \ don't worry about errors
 	ELSE  2drop  THEN
 	hist-pos 2dup backward^ 2! end^ 2!
-    THEN  r> .all space true ;
+    THEN
+    over edit-update true ;
 
 : xkill-expand ( max span addr pos1 -- max span addr pos2 )
-    prefix-found cell+ @ ?dup IF  >r
-	r@ - >string over r@ + -rot move
-	rot r@ - -rot .all r@ spaces r> back-restore .rest THEN ;
+    prefix-found cell+ @ ?dup-IF  >r
+	r@ - >edit-rest over r@ + -rot move
+	rot r> - -rot  THEN ;
 
 [IFUNDEF] insert
 : insert   ( string length buffer size -- )
@@ -329,22 +351,20 @@ Defer paste!
     over dup r@ +  rot move   r> move  ;
 [THEN]
 
+: (xtab-expand) ( max span addr pos1 -- max span addr pos2 0 )
+    xkill-expand 2dup extract-word dup 0= IF  nip EXIT  THEN
+    search-prefix tuck 2>r  prefix-found @ 0<> - grow-tib
+    0= IF  edit-error  2rdrop  prefix-off 0  EXIT  THEN
+    >edit-rest r@ + 2r> dup >r 2swap insert
+    r@ + rot r> + -rot
+    prefix-found @ IF  bl (xins)  THEN  edit-update  0 ;
+
 : xtab-expand ( max span addr pos1 -- max span addr pos2 0 )
     key? IF  #tab (xins) 0  EXIT  THEN
-    xkill-expand 2dup extract-word dup 0= IF  nip EXIT  THEN
-    search-prefix tib-full?
-    IF    bell  2drop  prefix-off
-    ELSE  dup >r
-	2>r >string r@ + 2r> 2swap insert
-	r@ + rot r> + -rot
-    THEN
-    prefix-found @ IF  bl (xins)  ELSE  .redraw  THEN  0 ;
+    (xtab-expand) ;
 
 : xpaste ( max span addr pos -- max span' addr pos' false )
-    2over paste$ $@len + u< IF
-	rdrop bell  0 EXIT  THEN
-    >string paste$ $@ 2swap paste$ $@len + insert
-    paste$ $@len + 2>r paste$ $@len + 2r> .redraw  0 ;
+    paste$ $@ xins-string  edit-update  0 ;
 
 : xtranspose ( max span addr pos -- max span' addr pos' false )
     dup IF
@@ -353,34 +373,72 @@ Defer paste!
 	over + xchar+ over - r> (xins)
     THEN 0 ;
 
-: setcur ( max span addr pos1 -- max span addr pos2 0 )
-    drop 0 .redraw 0 ;
+Variable setcur# \ relative to the end, in utf8 charactes
+Variable setsel# \ size of selection relative to the end
+
+: xback-chars ( addr len +n -- addr len' )
+    0 +DO x\string- dup 0<= ?LEAVE LOOP ;
+: xchars>chars ( addr len +n -- len' )
+    >r tuck r>  0 +DO  +x/string  dup 0<= ?LEAVE  LOOP  nip - ;
+: setcur ( max span addr pos1 -- max span addr pos2 )
+    drop over setcur# @ 0<= IF
+	setsel# @ setcur# @ - xback-chars
+    ELSE  2dup setcur# @ xchars>chars nip  THEN ;
 : setsel ( max span addr pos1 -- max span addr pos2 0 )
-    >r 2dup swap r@ /string 2dup setstring $!
-    dup >r r@ - over r@ + -rot move
-    swap r> - swap r> .redraw 0 ;
+    setstring$ $@ xins-string
+    setcur >r 2dup swap r@ safe/string
+    2dup 2dup setsel# @ xchars>chars nip tuck setstring$ $!
+    delete
+    swap setstring$ $@len - swap r> xretype ;
+: xreformat ( max span addr pos1 -- max span addr pos1 0 )
+    xedit-startpos
+    edit-linew @ screenw @ /mod cols dup screenw ! * +
+    dup spaces dup edit-curpos ! edit-linew !
+    xretype ;
 
 Create xchar-ctrlkeys ( -- )
-    ' false        , ' setcur       , ' xback        , ' false        ,
+    ' false        , ' xfirst-pos   , ' xback        , ' false        ,
     ' xeof         , ' xend-pos     , ' xforw        , ' false        ,
     ' ?xdel        , ' xtab-expand  , ' (xenter)     , ' xclear-rest  ,
-    ' xretype      , ' (xenter)     , ' next-line    , ' false        ,
+    ' xreformat    , ' (xenter)     , ' next-line    , ' false        ,
 
     ' prev-line    , ' false        , ' false        , ' setsel       ,
     ' xtranspose   , ' xclear-first , ' false        , ' false        ,
     ' <xdel>       , ' xpaste       , ' xhide        , ' false        ,
     ' false        , ' false        , ' false        , ' false        ,
 
+Create std-ekeys
+    ' xback ,        ' xforw ,        ' prev-line ,    ' next-line ,
+    ' xfirst-pos ,   ' xend-pos ,     ' prev-line ,    ' next-line ,
+    ' false ,        ' <xdel> ,       ' (xenter) ,     ' false ,
+    ' false ,        ' false ,        ' false ,        ' false ,
+    ' false ,        ' false ,        ' false ,        ' false ,
+    ' false ,        ' false ,        ' false ,        ' xreformat ,
+    ' xhide ,        ' false ,        ' prev-line ,    ' next-line ,
+    ' ?xdel ,        ' xtab-expand ,  ' setsel ,       ' (xenter) ,
+
+: xchar-edit-ctrl ( max span addr pos1 ekey -- max span addr pos2 flag )
+    dup mask-shift# rshift 7 and vt100-modifier !
+    dup 1 mask-shift# lshift 1- and swap keycode-start u>= IF
+	cells ekeys + perform  EXIT  THEN
+    cells ctrlkeys + perform ;
+
 : xchar-history ( -- )
-    xchar-ctrlkeys to ctrlkeys
-    ['] (xins)        IS insert-char
-    ['] kill-prefix   IS everychar
-    ['] linew-off     IS everyline
-    ['] xback-restore IS back-restore
-    ['] xcur-correct  IS cur-correct
-;
+    edit-terminal edit-out ! ;
 
 xchar-history
+
+' (xins)          IS insert-char
+' xins-string     IS insert-string
+' kill-prefix     IS everychar
+' edit-curpos-off IS everyline
+' xedit-update    IS edit-update
+' xpaste!         IS paste!
+' xgrow-tib       IS grow-tib
+' xchar-ctrlkeys  IS ctrlkeys
+' bell            IS edit-error
+' std-ekeys       IS ekeys
+' xchar-edit-ctrl IS edit-control
 
 \ initializing history
 
@@ -398,7 +456,7 @@ xchar-history
 ;
 
 : history-cold ( -- )
-    history-file get-history xchar-history ;
+    history-file get-history xchar-history edit-curpos-off ;
 
 :noname ( -- )
     defers 'cold

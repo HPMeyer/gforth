@@ -1,6 +1,6 @@
 /* serial IO for the beagle board
 
-  Copyright (C) 2010 Free Software Foundation, Inc.
+  Copyright (C) 2010,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -18,6 +18,7 @@
   along with this program; if not, see http://www.gnu.org/licenses/.
 */
 
+#include "config.h"
 /* This file is a stub for now */
 
 int terminal_prepped = 0;

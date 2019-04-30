@@ -2,7 +2,7 @@
   This is a generic file for 32-bit machines with IEEE FP arithmetic (no VMS).
   It only supports indirect threading.
 
-  Copyright (C) 1995,1998,1999,2003,2007,2008,2010,2012 Free Software Foundation, Inc.
+  Copyright (C) 1995,1998,1999,2003,2007,2008,2010,2012,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -122,3 +122,7 @@ typedef void *Label;
 #define HAS_OBJECTS
 
 #define RELINFOBITS	8
+
+#ifdef HAVE___BUILTIN___CLEAR_CACHE
+#define FLUSH_ICACHE(addr,size) __builtin___clear_cache((void*)(addr),(void*)(addr)+(size_t)(size))
+#endif

@@ -1,6 +1,6 @@
 /* Android main() for Gforth on Android
 
-  Copyright (C) 2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+  Copyright (C) 2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -18,6 +18,7 @@
   along with this program; if not, see http://www.gnu.org/licenses/.
 */
 
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -169,7 +170,7 @@ void addarg(char* arg, size_t len)
 {
   char * newarg = malloc(len+1);
 
-  memcpy(newarg, arg, len);
+  memmove(newarg, arg, len);
   newarg[len]='\0';
   argc++;
 
@@ -192,30 +193,53 @@ void addfileargs(char* filename)
   if(argfile==NULL) return; // no file, nothing to do
 
   while((line=fgetln(argfile, &n))) {
-    if(n > 0 && line[n-1]=='\n') n--;
-    addarg(line, n);
+    if(n > 0 && line[n-1]=='\n') {
+      n--;
+      addarg(line, n);
+    }
   }
 }
 
 static const char *paths[] = { "--",
-			       "--path=/mnt/sdcard/gforth/" PACKAGE_VERSION ":/mnt/sdcard/gforth/" ARCH "/gforth/" PACKAGE_VERSION ":/mnt/sdcard/gforth/site-forth",
-			       "--path=/data/data/gnu.gforth/files/gforth/" PACKAGE_VERSION ":/data/data/gnu.gforth/files/gforth/" ARCH "/gforth/" PACKAGE_VERSION ":/data/data/gnu.gforth/files/gforth/site-forth" };
+			       "--path=.:/mnt/sdcard/gforth/current:/mnt/sdcard/gforth/" ARCH "/gforth/current:/mnt/sdcard/gforth/site-forth:/mnt/sdcard/gforth/" ARCH "/gforth/site-forth",
+			       "--path=.:/data/data/gnu.gforth/files/gforth/current:/data/data/gnu.gforth/files/gforth/" ARCH "/gforth/current:/data/data/gnu.gforth/files/gforth/site-forth:/data/data/gnu.gforth/files/gforth/" ARCH "/gforth/site-forth" };
 static const char *folder[] = { "/sdcard", "/mnt/sdcard", "/data/data/gnu.gforth/files" };
+char *rootdir;
+char *homedir;
 
 int checkFiles(char ** patharg)
 {
   int i;
+  FILE * test;
+  char * logfile;
 
   for(i=0; i<=2; i++) {
     *patharg=paths[i];
-    if(!chdir(folder[i])) break;
+    if(!chdir(folder[i])) {
+      mkdir("gforth", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+      // may fail, because it exists
+      if((test=fopen("gforth/test-stamp", "w+"))) {
+	fclose(test);
+	unlink("gforth/test-stamp");
+	LOGI("chdir(%s)\n", folder[i]);
+	break;
+      }
+    }
   }
 
-  LOGI("chdir(%s)\n", folder[i]);
+  rootdir=folder[i];
   LOGI("Extra arg: %s\n", *patharg);
 
-  return checksha256sum(sha256sum, "gforth/" PACKAGE_VERSION "/sha256sum") &&
-    checksha256sum(sha256arch, "gforth/" ARCH "/gforth/" PACKAGE_VERSION "/sha256sum");
+  if(i != 0) {
+    asprintf(&logfile, "%s/gforthout.log", rootdir);
+    freopen(logfile, "w+", stdout);
+    asprintf(&logfile, "%s/gfortherr.log", rootdir);
+    freopen(logfile, "w+", stderr);
+    free(logfile);
+  }
+
+  return checksha256sum(sha256sum, "gforth/current/sha256sum") &&
+    checksha256sum(sha256arch, "gforth/" ARCH "/gforth/current/sha256sum");
 }
 
 void startForth(jniargs * startargs)
@@ -243,22 +267,34 @@ void startForth(jniargs * startargs)
     char *gforth_gz=get_gforth_gz();
     snprintf(dirbuf, dirlen, "%s/%s", dir, zip);
 
-    if(unpackFiles(gforth_gz, "gforth/" PACKAGE_VERSION "/sha256sum", sha256sum) &&
-       unpackFiles(dirbuf, "gforth/" ARCH "/gforth/" PACKAGE_VERSION "/sha256sum", sha256arch)) {
+    if(unpackFiles(gforth_gz, "gforth/current/sha256sum", sha256sum) &&
+       unpackFiles(dirbuf, "gforth/" ARCH "/gforth/current/sha256sum", sha256arch)) {
       post("doneprog");
     }
     unlink(gforth_gz); // remove temporary copy of gforth.gz
     free(gforth_gz);
   }
 
-  snprintf(statepointer, sizeof(statepointer), "%p", startargs);
-  setenv("HOME", "/sdcard/gforth/home", 1);
+  if(rootdir) {
+    asprintf(&homedir, "%s/gforth/home", rootdir);
+    setenv("HOME", homedir, 1);
+    free(homedir);
+    if((rootdir != folder[0])) {
+      setenv("GFORTHDESTDIR", folder[0], 1);
+      setenv("GFORTHINSDIR", rootdir, 1);
+    }
+  } else {
+    setenv("HOME", "/sdcard/gforth/home", 1);
+  }
   setenv("SHELL", "/system/bin/sh", 1);
   setenv("libccdir", startargs->libdir, 1);
   setenv("LANG", startargs->locale, 1);
   setenv("LC_ALL", startargs->locale, 1);
+  setenv("TERM", "linux", 1);
+
+  snprintf(statepointer, sizeof(statepointer), "%p", startargs);
   setenv("APP_STATE", statepointer, 1);
-  
+
   chdir("gforth/home");
 
   addarg(ADDRLEN("gforth"));
@@ -277,9 +313,12 @@ void startForth(jniargs * startargs)
     retvalue = gforth_quit();
   } else {
     LOGI("booting not successful...\n");
-    unlink("../" PACKAGE_VERSION "/sha256sum");
+    unlink("../current/sha256sum");
   }
   post("appexit");
+
+  fflush(stdout);
+  fflush(stderr);
 
   exit(retvalue);
 }

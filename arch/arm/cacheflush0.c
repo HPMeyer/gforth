@@ -1,7 +1,7 @@
 /*
   dummy cacheflush function (does nothing)
 
-  Copyright (C) 2007,2011 Free Software Foundation, Inc.
+  Copyright (C) 2007,2011,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -23,6 +23,7 @@
    file cacheflush.c here and call configure like this:
    ./configure arm_cacheflush=arch/arm/cacheflush
  */
+#include "config.h"
 #include <stdlib.h>
 void gforth_cacheflush(void *p, size_t size)
 {

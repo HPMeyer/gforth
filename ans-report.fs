@@ -1,6 +1,6 @@
 \ report words used from the various wordsets
 
-\ Copyright (C) 1996,1998,1999,2003,2005,2006,2007,2009,2012,2013,2014,2015 Free Software Foundation, Inc.
+\ Copyright (C) 1996,1998,1999,2003,2005,2006,2007,2009,2012,2013,2014,2015,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -181,7 +181,12 @@ ans-report-words
 	rdrop
     repeat
     drop ;
-	
+
+: hide ( "name" -- )
+    \ replace the last character of the name of word "name" with a
+    \ blank, so it won't be found
+    bl parse-name lookup @ find-name-in name>string + 1- c! ;
+
 \ the following sequence "' replace-word forth execute" is necessary
 \ to restore the default search order without effect on the "used
 \ word" lists

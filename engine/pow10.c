@@ -1,6 +1,6 @@
 /* a simple pow10 implementation
 
-  Copyright (C) 1995,1998,2000,2003,2007 Free Software Foundation, Inc.
+  Copyright (C) 1995,1998,2000,2003,2007,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -17,7 +17,9 @@
   You should have received a copy of the GNU General Public License
   along with this program; if not, see http://www.gnu.org/licenses/.
 */
+#include "config.h"
 #include <math.h>
+#include "symver.h"
 
 #ifndef M_LN10
 #define M_LN10      2.30258509299404568402

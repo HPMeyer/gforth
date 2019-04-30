@@ -1,6 +1,6 @@
 /* DEC Alpha
 
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2005,2007 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2005,2007,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -22,9 +22,11 @@
 #define USE_TOS
 #endif
 
-#define FLUSH_ICACHE(addr,size)		asm("call_pal 0x86") /* imb (instruction-memory barrier) */
-
 #include "../generic/machine.h"
+
+#ifndef FLUSH_ICACHE
+# define FLUSH_ICACHE(addr,size)		asm("call_pal 0x86") /* imb (instruction-memory barrier) */
+#endif
 
 /* code padding */
 #define CODE_ALIGNMENT 16

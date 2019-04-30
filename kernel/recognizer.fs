@@ -1,6 +1,6 @@
 \ recognizer-based interpreter                       05oct2011py
 
-\ Copyright (C) 2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -25,51 +25,61 @@
 \ The "design pattern" used here is the *factory*, even though
 \ the recognizer does not return a full-blown object.
 \ A recognizer has the stack effect
-\ ( addr u -- token table | addr u r:fail )
+\ ( addr u -- token table | addr u rectype-null )
 \ where the token is the result of the parsing action (can be more than
 \ one stack or live on other stacks, e.g. on the FP stack)
 \ and the table contains three actions (as array of three xts):
 \ interpret it, compile it, compile it as literal.
 
-: (r:fail)  no.extensions ;
-' no.extensions dup >vtable
-' (r:fail) AConstant r:fail
-\G If a recognizer fails, it returns @code{r:fail}
+' no.extensions dup dup rectype: rectype-null
+\G If a recognizer fails, it returns @code{rectype-null}
 
 : lit, ( n -- ) postpone Literal ;
 
-' name?int alias r>int
-' name>comp alias r>comp
-: r>post ( r:table -- xt ) >namevt @ >vtlit, @ ;
+: rectype>int  ( rectype -- xt ) @ ;
+: rectype>comp ( rectype -- xt ) cell+ @ ;
+: rectype>post ( rectype -- xt ) cell+ cell+ @ ;
 
-: do-lit, ( .. xt -- .. ) r>post execute ;
-: >postpone ( token table -- )
-    dup >r name>comp drop do-lit, r> post, ;
+defer >postpone-replacer ( ... rectype1 -- ... rectype2 )
+\ may replace recognizer result for postponing (used for postponing locals)
+' noop is >postpone-replacer
 
-: rec:word ( addr u -- xt | r:fail )
+: >postpone ( ... rectype -- )
+    >postpone-replacer dup >r rectype>post execute r> rectype>comp compile, ;
+
+: name-compsem ( ... nt -- ... )
+    \ perform compilation semantics of nt
+    name>comp execute-;s ;
+
+:noname name?int  execute-;s ;
+' name-compsem
+' lit,
+rectype: rectype-name ( takes nt, i.e. result of find-name and find-name-in )
+
+: rec-word ( addr u -- nt rectype-name | rectype-null )
     \G Searches a word in the wordlist stack
     find-name [ [IFDEF] prelude-mask ] run-prelude [ [THEN] ]
-    dup 0= IF  drop r:fail  THEN ;
+    dup IF  rectype-name  ELSE  drop rectype-null  THEN ;
 
-:noname ( n -- n ) ;
-' do-lit, set-optimizer
-lit,: ( n -- ) postpone Literal ;
-AConstant r:num
+' noop
+' lit,
+dup
+rectype: rectype-num
 
-:noname ( d -- d ) ;
-' do-lit, set-optimizer
-lit,: ( d -- ) postpone 2Literal ;
-AConstant r:dnum
+' noop
+:noname ( d -- ) postpone 2Literal ;
+dup
+rectype: rectype-dnum
 
 \ snumber? should be implemented as recognizer stack
 
-: rec:num ( addr u -- n/d table | r:fail )
+: rec-num ( addr u -- n/d table | rectype-null )
     \G converts a number to a single/double integer
     snumber?  dup
     IF
-	0> IF  r:dnum   ELSE  r:num  THEN  EXIT
+	0> IF  rectype-dnum   ELSE  rectype-num  THEN  EXIT
     THEN
-    drop r:fail ;
+    drop rectype-null ;
 
 \ generic stack get/set
 
@@ -83,7 +93,7 @@ AConstant r:dnum
 
 : stack: ( n "name" -- )
     \G create a named stack with at least @var{n} cells space
-    drop Variable ;
+    drop $Variable ;
 : stack ( n -- addr )
     \G create an unnamed stack with at least @var{n} cells space
     drop align here 0 , ;
@@ -97,15 +107,8 @@ AConstant r:dnum
     >r r@ $@ ?dup IF  + cell- @ r@ $@len cell- r> $!len
     ELSE  drop rdrop  THEN ;
 
-AVariable default-recognizer
+$Variable default-recognizer
 \G The system recognizer
-
-here default-recognizer !
-2 cells , ' rec:num A, ' rec:word A,
-
-Defer 'image ( -- )
-:noname ( -- )
-    default-recognizer $save ; IS 'image
 
 default-recognizer AValue forth-recognizer
 
@@ -120,35 +123,30 @@ default-recognizer AValue forth-recognizer
 
 Defer trace-recognizer  ' drop is trace-recognizer
 
-: map-recognizer ( addr u rec-addr -- tokens table )
+: recognize ( addr u rec-addr -- ... rectype )
     \G apply a recognizer stack to a string, delivering a token
-    $@ bounds cell- swap cell- -DO
+    $@ bounds cell- swap cell- U-DO
 	2dup I -rot 2>r
-	perform dup r:fail <>  IF
+	['] trace-recognizer defer@ >r  ['] drop is trace-recognizer
+	perform  r> is trace-recognizer \ no tracing on recursive invocation
+	dup rectype-null <>  IF
 	    2rdrop I @ trace-recognizer  UNLOOP  EXIT  THEN  drop
 	2r>
     cell -LOOP
-    2drop r:fail ;
-
-Defer recognize
-
-: do-recognizer ( addr u -- tokens xt )
-    \G process the string @var{addr u} in the recognizer stack
-    forth-recognizer map-recognizer ;
-' do-recognizer is recognize
+    2drop rectype-null ;
 
 \ nested recognizer helper
 
-\ : nest-recognizer ( addr u -- token table | r:fail )
+\ : nest-recognizer ( addr u -- token table | rectype-null )
 \   xxx-recognizer recognize ;
 
 : interpreter-r ( addr u -- ... xt )
-    recognize name?int ;
+    forth-recognizer recognize rectype>int ;
 
 ' interpreter-r IS parser1
 
 : compiler-r ( addr u -- ... xt )
-    recognize name>comp ;
+    forth-recognizer recognize rectype>comp ;
 
 : [ ( -- ) \  core	left-bracket
     \G Enter interpretation state. Immediate word.
@@ -160,5 +158,5 @@ Defer recognize
 
 : postpone ( "name" -- ) \ core
     \g Compiles the compilation semantics of @i{name}.
-    parse-name recognize >postpone
+    parse-name forth-recognizer recognize >postpone
 ; immediate restrict

@@ -1,6 +1,6 @@
 \ simple tests for widgets code
 
-\ Copyright (C) 2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -21,45 +21,30 @@ require widgets.fs
 
 also minos
 
-frame new value f1
-frame new value f2
-frame new value f3
-frame new value f4
-frame new value f5
-frame new value f6
-text new value f7
-text new value f8
-
-
-: !f1 ( -- ) f1 >o
-    0 0  dpy-w @ 4 /  0  dpy-h @ 2/ resize
-    32 border ! $FFFFFFFF frame-color !
-    button2 o> ;
-
-: !f2 ( -- ) f2 >o
-    dpy-w @ 2/  0  dpy-w @ 2/  0  dpy-h @ 19 20 */ resize
-    32 border ! $FF7FFFFF frame-color !
-    button3 o> ;
-
-: !f3 ( -- ) f3 >o
-    0  dpy-h @ 2/  dpy-w @ 2/  0  dpy-h @ 2/ 2/ resize
-    16 border ! $FFFF7FFF frame-color !
-    button1 o> ;
-
-: !f4 ( -- ) f4 >o
-    0  dpy-h @ 3 4 */  dpy-w @ 4 /  0  dpy-h @ 5 / resize
-    32 border ! $FF7F7FFF frame-color !
-    button1 o> ;
-
-: !f5 ( -- ) f5 >o
-    dpy-w @ 4 /  dpy-h @ 3 4 */  dpy-w @ 4 /  0  dpy-h @ 5 / resize
-    8 border ! $7FFF7FFF frame-color !
-    button1 o> ;
-
-: !f6 ( -- ) f6 >o
-    dpy-w @ 4 /  0  dpy-w @ 4 /  0  dpy-h @ 2/ resize
-    16 border ! $7FFFFFFF frame-color !
-    button2 o> ;
+glue*2 $FFFFFFDF color, 32e }}frame dup .button2 value f1
+glue*2 $FF7FFFFF color, 32e }}frame dup .button3 simple[] value f2
+glue*l $FF5F5F00 color, 0e }}frame dup .button1 value f3a
+glue*l $5FFF5F00 color, 0e }}frame dup .button1 value f3b
+glue*l $5F5FFF00 color, 0e }}frame dup .button1 value f3c
+glue*l $5F5F5F00 color, 16e }}frame dup .button1 value f3d
+glue*l $FF7F7FFF color, 32e }}frame dup .button1 simple[] value f4
+glue*l $7FFF7FFF color, 8e  }}frame dup .button1 simple[] value f5
+glue*2 $7FFFFFFF color, ' atlas-tex }}1image dup .button2 simple[] value f6
+edit new value t1
+edit new value t2a
+edit new value t2b
+edit new value t2c
+edit new value t2d
+text new value t3
+{{ {{
+{{ f3a t2a }}z t2a edit[] dup value z2a
+{{ f3b t2b }}z t2b edit[] dup value z2b
+{{ f3c t2c }}z t2c edit[] dup value z2c
+{{ f3d t2d }}z t2d edit[] dup value z2d
+{{ {{ f1 t1 }}z t1 edit[] dup value z1 f2 t3 }}h box[] dup value h1
+{{ f4 f5 }}h box[] dup value h2
+}}v box[] dup value h3
+f6 }}h box[] to top-widget
 
 also freetype-gl
 48e FConstant fontsize#
@@ -70,59 +55,70 @@ atlas fontsize#
     "/usr/share/fonts/truetype/LiberationSans-Regular.ttf"
     2dup file-status nip [IF]
 	2drop "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+	2dup file-status nip [IF]
+	    2drop "/usr/share/fonts/truetype/NotoSans-Regular.ttf"
+	    2dup file-status nip [IF]
+		2drop "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"
+	    [THEN]
+	[THEN]
     [THEN]
 [THEN]
 2dup file-status throw drop
-texture_font_new_from_file Value font1
+open-font Value font1
 
 atlas fontsize#
-[IFDEF] android  "/system/fonts/DroidSansFallback.ttf"
+[IFDEF] android
+    "/system/fonts/DroidSansFallback.ttf"
     2dup file-status nip [IF]
 	2drop "/system/fonts/NotoSansSC-Regular.otf" \ for Android 6
 	2dup file-status nip [IF]
 	    2drop "/system/fonts/NotoSansCJK-Regular.ttc" \ for Android 7
 	[THEN]
     [THEN]
-[ELSE] "/usr/share/fonts/truetype/gkai00mp.ttf"
+[ELSE]
+    "/usr/share/fonts/truetype/gkai00mp.ttf"
     2dup file-status nip [IF]
 	2drop "/usr/share/fonts/truetype/arphic-gkai00mp/gkai00mp.ttf"
+	2dup file-status nip [IF]
+	    "/usr/share/fonts/truetype/NotoSerifSC-Regular.otf"
+	    2dup file-status nip [IF]
+		2drop "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+	    [THEN]
+	[THEN]
     [THEN]
 [THEN]
 2dup file-status throw drop
-texture_font_new_from_file Value font2
+open-font Value font2
 previous
 
-: !f7 ( -- )  f7 >o
-    8 x ! dpy-h @ 4 / y ! "Dös isch a Tägscht!" text-string $!
-    $884400FF text-color !  font1 text-font ! o> ;
+: !t1 ( -- ) t1 >o
+    "Dös isch a Tägscht!" font1 edit!  24e to border
+    $884400FF text-color, to text-color o> ;
 
-: !f8 ( -- ) f8 >o
-    8 x ! dpy-h @ 5 8 */ y ! "这是一个文本：在德语说" text-string $!
-    $004488FF text-color !  font2 text-font ! o> ;
+: !t2 ( -- )
+    "混沌未分天地乱，茫茫渺渺无人见。" font2  t2a >o edit! 0e to border $001122DF text-color, to text-color o>
+    "自从盘古破鸿蒙，开辟从兹清浊辨。" font2  t2b >o edit! 0e to border $221100DF text-color, to text-color o>
+    "覆载群生仰至仁，发明万物皆成善。" font2  t2c >o edit! 0e to border $FFDDAADF text-color, to text-color o>
+    "欲知造化会元功，须看西游释厄传。" font2  t2d >o edit! 16e to border text-color, $DDEEFFDF to text-color o> ;
 
-: !widgets ( -- ) !f1 !f2 !f3 !f4 !f5 !f6 !f7 !f8 ;
+: !t3 ( -- ) t3 >o
+    "…" font1 text!  16e to border
+    $00FF88FF text-color, to text-color o> ;
 
-: widgets-draw { xt -- }
-    f1 >o xt execute o> f7 >o xt execute o>
-    f2 >o xt execute o> f3 >o xt execute o>
-    f8 >o xt execute o> f4 >o xt execute o>
-    f5 >o xt execute o> f6 >o xt execute o> ;
-
-: widgets-test
-    <draw-init      ['] draw-init      widgets-draw draw-init>
-    <draw-bg        ['] draw-bg        widgets-draw render>
-    <draw-icon      ['] draw-icon      widgets-draw render>
-    <draw-thumbnail ['] draw-thumbnail widgets-draw render>
-    <draw-image     ['] draw-image     widgets-draw draw-image>
-    <draw-text      ['] draw-text      widgets-draw render>
-    sync ;
+: !widgets ( -- ) !t1 !t2 !t3 top-widget .htop-resize
+    t2a [: >o sin-t fdup fade 4e f* to border o> +sync ;] 1e >animate
+    t2b [: >o sin-t fdup fade 8e f* to border o> +sync ;] 2e >animate
+    t2c [: >o sin-t fdup fade 12e f* to border o> +sync ;] 3e >animate
+    t2d [: >o sin-t fdup fade 16e f* to borderv o> +sync ;] 4e >animate
+    f3a [: >o sin-t fdup fade 8e f* to border o> +sync ;] 1e >animate
+    f3b [: >o sin-t fdup fade 16e f* to border o> +sync ;] 2e >animate
+    f3c [: >o sin-t fdup fade 24e f* to border o> +sync ;] 3e >animate
+    f3d [: >o sin-t fdup fade 16e f* to borderv o> +sync ;] 4e >animate ;
 
 also [IFDEF] android android [THEN]
 
-: widgets-demo ( -- )  [IFDEF] hidekb  hidekb [THEN]
-    1 level# +!  !widgets  BEGIN  widgets-test >looper
-	?config-changer need-sync @ IF  !widgets  need-sync off  THEN
-    level# @ 0= UNTIL  need-sync on  need-show on ;
+: widgets-demo ( -- )
+    !widgets widgets-loop ;
 
 previous
 

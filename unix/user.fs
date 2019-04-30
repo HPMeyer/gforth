@@ -1,6 +1,6 @@
 \ wrapper to load Swig-generated libraries
 
-\ Copyright (C) 2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,7 +17,7 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-Voctable user32
+cs-vocabulary user32
 get-current also user32 definitions
 
 c-library user

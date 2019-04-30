@@ -1,6 +1,6 @@
 ;;; gforth.el --- major mode for editing (G)Forth sources
 
-;; Copyright (C) 1995,1996,1997,1998,2000,2001,2003,2004,2007,2008,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+;; Copyright (C) 1995,1996,1997,1998,2000,2001,2003,2004,2007,2008,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 ;; This file is part of Gforth.
 
@@ -242,7 +242,7 @@ PARSED-TYPE specifies what kind of text is parsed. It should be on of 'name',
 	(("immediate" "compile-only" "restrict")
 	 immediate (font-lock-keyword-face . 1))
 	(("does>") definition-starter (font-lock-keyword-face . 1))
-	((":noname" "comp:" "post:" "lit,:") definition-starter (font-lock-keyword-face . 1))
+	((":noname" "comp:" "compsem:" "opt:" "defer:" "defer@-opt:" "to-opt:") definition-starter (font-lock-keyword-face . 1))
 	((";" ";code" ";abi-code") definition-ender (font-lock-keyword-face . 1))
 	(("include" "require" "needs" "use") 
 	 non-immediate (font-lock-keyword-face . 1) 
@@ -267,16 +267,20 @@ PARSED-TYPE specifies what kind of text is parsed. It should be on of 'name',
 	 "[\"\n]" nil string (font-lock-string-face . 1))
 	(("warning\"") compile-only (font-lock-keyword-face . 1)
 	 "[\"\n]" nil string (font-lock-string-face . 1))
-	(("{" "{:") compile-only (font-lock-variable-name-face . 1)
+	(("{" "{:" "[{:") compile-only (font-lock-variable-name-face . 1)
 	 "[\n}]" nil name (font-lock-variable-name-face . 1))
 	((".(" "(") immediate (font-lock-comment-face . 1)
 	  ")" nil comment (font-lock-comment-face . 1))
 	(("\\" "\\G") immediate (font-lock-comment-face . 1)
 	 "[\n]" nil comment (font-lock-comment-face . 1))
+	(("\\\\\\") immediate (font-lock-comment-face . 1)
+	 "[\0]" nil comment (font-lock-comment-face . 1))
 	  
 	(("[if]" "[?do]" "[do]" "[for]" "[begin]" 
 	  "[endif]" "[then]" "[loop]" "[+loop]" "[next]" "[until]" "[repeat]"
-	  "[again]" "[while]" "[else]" "[:" ";]" "nope")
+	  "[again]" "[while]" "[else]" "[:"
+	  "[n:l" "[n:h" "[n:d" "[d:l" "[d:h" "[d:d" "[f:l" "[f:h" "[f:d"
+	  "[{:" ";]" "nope")
 	 immediate (font-lock-keyword-face . 2))
 	(("[ifdef]" "[ifundef]" "[defined]" "[undefined]") immediate (font-lock-keyword-face . 2)
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
@@ -303,18 +307,22 @@ PARSED-TYPE specifies what kind of text is parsed. It should be on of 'name',
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
 	(("<is>" "'" "see") non-immediate (font-lock-keyword-face . 2)
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
-	(("[to]") compile-only (font-lock-keyword-face . 2)
+	(("[to]" "[+to]" "[addr]") compile-only (font-lock-keyword-face . 2)
 	 "[ \t\n]" t name (font-lock-variable-name-face . 3))
-	(("to") immediate (font-lock-keyword-face . 2)
+	(("to" "+to" "addr") immediate (font-lock-keyword-face . 2)
 	 "[ \t\n]" t name (font-lock-variable-name-face . 3))
-	(("<to>") non-immediate (font-lock-keyword-face . 2)
+	(("<to>" "<+to>" "<addr>") non-immediate (font-lock-keyword-face . 2)
 	 "[ \t\n]" t name (font-lock-variable-name-face . 3))
 
 	(("create" "variable" "constant" "2variable" "2constant" "fvariable"
-	  "fconstant" "value" "2value" "field" "user" "vocabulary" "voctable" 
-	  "create-interpret/compile" "interpret/compile:"
-	  "debug:" "field:" "2field:" "ffield:" "sffield:" "dffield:"
-	  "uvar" "uvalue" "cfield:" "wfield:" "lfield:" "+field")
+	  "$variable" "fconstant" "value" "2value" "fvalue" "field" "user"
+	  "vocabulary" "cs-vocabulary" "create-interpret/compile"
+	  "interpret/compile:" "debug:" "field:" "2field:" "ffield:"
+	  "sffield:" "dffield:" "uvar" "uvalue" "cfield:" "wfield:" "lfield:"
+	  "+field" "value:" "cvalue:" "scvalue:" "wvalue:" "swvalue:"
+	  "lvalue:" "slvalue:" "2value:" "fvalue:" "sfvalue:" "dfvalue:"
+	  "$value:" "defer:" "value[]:" "$value[]:"
+	  "wrap+value:")
 	 non-immediate (font-lock-type-face . 2)
 	 "[ \t\n]" t name (font-lock-variable-name-face . 3))
 	("\\S-+%" non-immediate (font-lock-type-face . 2))
@@ -325,7 +333,7 @@ PARSED-TYPE specifies what kind of text is parsed. It should be on of 'name',
 	 "[ \t\n]" t name (font-lock-type-face . 3))
 	(("struct" "end-c-library" "c-library-name" "end-structure") 
 	 non-immediate (font-lock-keyword-face . 2))
-	(("c-library" "begin-structure") non-immediate (font-lock-keyword-face . 2)
+	(("c-library" "begin-structure" "extend-structure") non-immediate (font-lock-keyword-face . 2)
 	 "[ \t\n]" t name (font-lock-variable-name-face . 3))
 	(("c-variable") non-immediate (font-lock-type-face . 1)
 	 "[ \t\n]" t name (font-lock-function-name-face . 3)
@@ -454,17 +462,18 @@ INDENT1 and INDENT2 are indentation specifications of the form
    Even values of SELF-INDENT and NEXT-INDENT correspond to multiples of
    `forth-indent-level'. Odd values get an additional 
    `forth-minor-indent-level' added/substracted. Eg a value of -2 indents
-   1 * forth-indent-level  to the left, wheras 3 indents 
+   1 * forth-indent-level  to the left, whereas 3 indents 
    1 * forth-indent-level + forth-minor-indent-level  columns to the right.")
 
 (setq forth-indent-words
       '((("if" "begin" "do" "?do" "+do" "-do" "u+do"
 	  "u-do" "?dup-if" "?dup-0=-if" "case" "of" "?of" "try" "iferror"
-	  "[if]" "[ifdef]" "[ifundef]" "[begin]" "[for]" "[do]" "[?do]" "[:")
+	  "[if]" "[ifdef]" "[ifundef]" "[begin]" "[for]" "[do]" "[?do]" "[:"
+	  "[n:l" "[n:h" "[n:d" "[d:l" "[d:h" "[d:d" "[f:l" "[f:h" "[f:d" "[{:")
 	 (0 . 2) (0 . 2))
 	((":" ":noname" "code" "abi-code" "struct" "m:" ":m" "class" 
-	  "interface" "c-library" "c-library-name" "comp:" "post:"
-	  "begin-structure" "event:")
+	  "interface" "c-library" "c-library-name" "comp:" "opt:" "post:"
+	  "begin-structure" "extend-structure" "event:" "to-opt:" "defer@-opt:" "to:" "defer@:")
 	 (0 . 2) (0 . 2) non-immediate)
 	("\\S-+%$" (0 . 2) (0 . 0) non-immediate)
 	((";" ";m") (-2 . 0) (0 . -2))
@@ -1371,13 +1380,11 @@ bell during block file read/write operations."
 	   (forth-change-function (point-min) (point-max) nil t))))
 
 (defun forth-fill-paragraph () 
-  "Fill comments (starting with '\'; do not fill code (block style
-programmers who tend to fill code won't use emacs anyway:-)."
-  ; Currently only comments at the start of the line are filled.
-  ; Something like lisp-fill-paragraph may be better.  We cannot use
-  ; fill-paragraph, because it removes the \ from the first comment
-  ; line. Therefore we have to look for the first line of the comment
-  ; and use fill-region.
+  "Fill comments starting with '\\' which start a line; do not fill code."
+  ;; Something like lisp-fill-paragraph may be better.  We cannot use
+  ;; fill-paragraph, because it removes the \ from the first comment
+  ;; line. Therefore we have to look for the first line of the comment
+  ;; and use fill-region.
   (interactive)
   (save-excursion
     (beginning-of-line)
@@ -1390,8 +1397,10 @@ programmers who tend to fill code won't use emacs anyway:-)."
 	  (to (save-excursion (forward-paragraph) (point))))
       (if (looking-at "[ \t]*\\\\g?[ \t]+")
 	  (progn (goto-char (match-end 0))
-		 (set-fill-prefix)
-		 (fill-region from to nil))))))
+		 (let ((fill-prefix-save fill-prefix))
+		   (set-fill-prefix)
+		   (fill-region from to nil)
+		   (setq fill-prefix fill-prefix-save)))))))
 
 (defun forth-comment-indent ()
   (save-excursion

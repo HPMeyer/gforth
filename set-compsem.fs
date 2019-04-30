@@ -1,6 +1,6 @@
 \ set-compsem, dual-xt version to set compilation semantics
 
-\ Copyright (C) 2015 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -18,4 +18,26 @@
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
 : set-compsem ( xt -- )
+    \G change compilation semantics of the last defined word
     >r start-xt set->comp r> ['] execute ]] drop 2literal ; [[ ;
+
+\ silly example:
+\ :noname ." compiling" ;
+\ : foo ." interpreting" ; set-compsem
+
+: intsem: ( xt "name" -- )
+    \G defines a word, which has a special compilation semantics
+    \G provided as @var{xt} on the stack
+    >r :noname r> ['] execute ]] drop 2Literal ; [[ >r
+    : r> set->comp ;
+
+\ silly example:
+\ :noname ." compiling" ; intsem: foo ." interpreting" ;
+
+: compsem: ( -- )
+    \G adds a non default compilation semantics to the last
+    \G definition
+    start-xt [n:h set-compsem ;] colon-sys-xt-offset stick ;
+
+\ silly example
+\ : foo ." interpreting" ; compsem: ." compiling" ;

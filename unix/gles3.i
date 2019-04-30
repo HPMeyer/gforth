@@ -1,5 +1,5 @@
 // this file is in the public domain
-%module gles
+%module gles3
 %insert("include")
 %{
 #include <GLES3/gl3.h>
@@ -9,13 +9,13 @@
 extern struct _IO_FILE *stderr;
 #endif
 %}
-#define const
 %apply float { GLfloat, GLclampf };
 %apply long { EGLNativePixmapType }
 %apply long long { GLuint64 };
 %apply SWIGTYPE * { GLintptr, GLsizeiptr, EGLBoolean };
 
 #define SWIG_FORTH_OPTIONS "no-callbacks"
+#define SWIG_FORTH_GFORTH_LIBRARY "GLESv3"
 
 #if defined(host_os_linux_android) || defined(host_os_linux_androideabi)
 #define __ANDROID__

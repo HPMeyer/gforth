@@ -9,12 +9,13 @@
 extern struct _IO_FILE *stderr;
 #endif
 %}
-#define const
 %apply float { GLfloat, GLclampf };
 %apply long { EGLNativePixmapType, GLintptr, GLsizeiptr };
 %apply SWIGTYPE * { EGLBoolean };
 
 #define SWIG_FORTH_OPTIONS "no-callbacks"
+
+#define SWIG_FORTH_GFORTH_LIBRARY "GLESv2"
 
 #if defined(host_os_linux_android) || defined(host_os_linux_androideabi)
 #define __ANDROID__

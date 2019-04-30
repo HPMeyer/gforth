@@ -1,6 +1,6 @@
 \ VARS.FS      Kernal variables
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -19,7 +19,31 @@
 
 hex \ everything now hex!                               11may93jaw
 
+\ important definers
+
+: uvalue-to ( n uvalue-xt -- )
+    \g uvalue-to is the to-method for uvalues; it's xt is only
+    \g there to be consumed by @code{set-to}.
+    \ should be defined with TO: OPT-TO:, but not supported by cross.fs
+    !!?addr!! >body @ next-task +  !-table to-!exec ;
+opt: ( uvalue-xt to-xt -- )
+    !!?addr!! drop >body @ postpone useraddr , !-table to-!, ;
+: u-compile, ( xt -- )  >body @ postpone user@ , ;
+
+: UValue ( "name" -- )
+    \G Define a per-thread value
+    Create cell uallot , ['] uvalue-to set-to
+    ['] u-compile, set-optimizer
+  DOES> @ next-task + @ ;
+
+: 2Constant ( w1 w2 "name" -- ) \ double two-constant
+    Create ( w1 w2 "name" -- )
+    2,
+  DOES> ( -- w1 w2 )
+    2@ ;
+
 \ important constants                                  17dec92py
+
 
 \ dpANS6 (sect 3.1.3.1) says 
 \ "a true flag ... [is] a single-cell value with all bits set"
@@ -67,7 +91,7 @@ $400 Value def#tib
 \ initialized by COLD
 
 has? no-userspace 0= [IF]
-Create main-task  has? OS [IF] 100 [ELSE] 40 [THEN] cells dup allot
+Create main-task  has? OS [IF] $100 [ELSE] $40 [THEN] cells dup allot
 
 \ set user-pointer from cross-compiler right
 main-task 
@@ -100,7 +124,10 @@ AUser lp0 ( -- a-addr ) \ gforth
 
 AUser throw-entry  \ pointer to task-specific signal handler
 
-AUser handler	\ pointer to last throw frame
+: handler ( -- addr ) sps@ cell+ ;	\ pointer to last throw frame
+: first-throw ( -- addr ) sps@ [ 2 cells ] Literal + ; \ contains true if the next throw is the first throw
+: wraphandler ( -- addr ) sps@ [ 3 cells ] Literal + ; \ wrap handler, experimental
+
 has? backtrace [IF]
 AUser backtrace-rp0 \ rp at last call of interpret
 [THEN]
@@ -116,8 +143,8 @@ here word-pno-size chars allot dup holdbufptr !
 word-pno-size chars +
 : holdbuf ( -- addr ) holdbufptr @ ;
 : holdbuf-end   holdbuf word-pno-size chars + ;
-AUser holdptr dup holdptr a!
-AUser holdend     holdend a!
+AUser holdptr dup holdptr !
+AUser holdend     holdend !
 
 User base ( -- a-addr ) \ core
 \G @code{User} variable -- @i{a-addr} is the address of a cell that
@@ -163,7 +190,7 @@ User state ( -- a-addr ) \ core,tools-ext
 0 state !
 
 AVariable normal-dp     \ default dictionary pointer before sections
-AUser dpp		normal-dp dpp !
+UValue dp               \ initialized at boot time with normal-dp
 			\ the pointer to the current dictionary pointer
                         \ ist reset to normal-dp on (doerror)
                         \  (i.e. any throw caught by quit)
@@ -181,7 +208,18 @@ has? flash [IF]
 Variable max-name-length \ maximum length of all names defined yet
 32 max-name-length ! \ is global!
 
-\  has? peephole  [IF]
-\  0 value peeptable \ initialized in boot
-\  [THEN]
-
+Variable warnings ( -- addr ) \ gforth
+\G set warnings level to
+\G @table @code
+\G @item 0
+\G turns warnings off
+\G @item -1
+\G turns normal warnings on
+\G @item -2
+\G turns beginner warnngs on
+\G @item -3
+\G pedantic warnings on
+\G @item -4
+\G turns warnings into errors (including beginner warnings)
+\G @end table
+G -2 warnings T ! \ default to -Won

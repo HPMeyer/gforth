@@ -1,5 +1,5 @@
 \ startup stuff
-\ Copyright (C) 2015,2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -16,6 +16,14 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
+0 to infile-id
+s" GFORTHDESTDIR" getenv d0<> [IF]
+    ." Replace dirs:" cr
+    s" GFORTHDESTDIR" getenv 2dup type cr
+    s" GFORTHINSDIR" getenv 2dup type cr
+    repl-included-files
+    .included
+[THEN]
 ." load terminal-server" cr stdout flush-file throw
 require ansi.fs
 require unix/terminal-server.fs

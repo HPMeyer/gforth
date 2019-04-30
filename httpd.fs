@@ -1,6 +1,6 @@
 #! /usr/local/bin/gforth
 
-\ Copyright (C) 2000,2002,2003,2004,2006,2007,2008,2013,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2000,2002,2003,2004,2006,2007,2008,2013,2015,2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -127,7 +127,7 @@ Variable maxnum
   s" close" connection $!
   infile-id push-file loadfile !  loadline off  blk off
   get-order n>r get-recognizers n>r
-  commands 1 set-order  ['] rec:word 1 set-recognizers
+  commands 1 set-order  ['] rec-word 1 set-recognizers
   command? on  ['] refill-loop catch
   Keep-Alive $@ snumber? dup 0> IF  nip  THEN  IF  maxnum !  THEN
   active @ IF  s" " posted $! Content-Length $@ snumber? drop

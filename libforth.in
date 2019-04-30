@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#Copyright (C) 2008,2011,2012,2014,2015,2016 Free Software Foundation, Inc.
+#Copyright (C) 2008,2011,2012,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -24,9 +24,14 @@ shift
 export CROSS_PREFIX=@CROSS_PREFIX@
 @NO_CROSS@test -z "$ENGINE" && ENGINE=./gforth
 @NO_CROSS@test -f "gforth.fi" && KERNEL="gforth.fi"
-LIBCCDIR=$PWD/lib/gforth/$VERSION/$machine/libcc-named/
-export C_INCLUDE_PATH=@srcdir@/include/gforth/$VERSION/$machine
-EXTRAPATH="also c-lib s\" $LIBCCDIR\" >libcc-named-dir libcc-path clear-path libcc-named-dir libcc-path also-path :noname 2drop s\" $DEST\" ; is replace-rpath previous"
+export libccdir="$PWD/lib/gforth/$VERSION/$machine/libcc-named/"
+export libccnameddir="$libccdir"
+if test -n "$C_INCLUDE_PATH"; then
+    export C_INCLUDE_PATH="@srcdir@/include/gforth/$VERSION/$machine:@srcdir@/engine:$C_INCLUDE_PATH"
+else
+    export C_INCLUDE_PATH="@srcdir@/include/gforth/$VERSION/$machine:@srcdir@/engine"
+fi
+EXTRAPATH="also c-lib :noname 2drop s\" $DEST\" ; is replace-rpath previous 0 warnings !@ get-current environment-wordlist set-current : os-type ( -- c-addr u ) s\" @host_os@\" ; set-current warnings !"
 if test -f "$ENGINE" -a -f "$KERNEL"; then 
   $ENGINE -p ".@PATHSEP@~+@PATHSEP@@srcdir@@PATHSEP@$PWD" --die-on-signal -e "$EXTRAPATH" "$@"
 else

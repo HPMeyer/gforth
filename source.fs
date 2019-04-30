@@ -1,6 +1,6 @@
 \ source location handling
 
-\ Copyright (C) 1995,1997,2003,2004,2007,2009,2011,2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1997,2003,2004,2007,2009,2011,2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -25,8 +25,10 @@
 
 require string.fs
 
+-1 #23 rshift Constant *terminal*#
+
 : loadfilename#>str ( n -- addr u )
-    dup 0< IF  drop s" *terminal*"  EXIT  THEN
+    dup *terminal*# and *terminal*# = IF  drop s" *terminal*"  EXIT  THEN
     included-files $[]@ ;
 
 \ we encode line and character in one cell to keep the interface the same
@@ -34,10 +36,10 @@ require string.fs
 : decode-pos ( npos -- nline nchar )
     dup 8 rshift swap $ff and ;
 
-: decode-pos1 ( xpos -- nfile nline nchar )
-    dup 23 arshift swap $7fffff and decode-pos ;
+: decode-view ( view -- nfile nline nchar )
+    dup 23 rshift swap $7fffff and decode-pos ;
 
-: xpos>char ( xpos -- u )
+: view>char ( view -- u )
     $ff and ;
 
 : .sourcepos3 (  nfile nline nchar -- )
@@ -46,13 +48,13 @@ require string.fs
     rot 0 .r ': emit swap 1+ 0 .r
     base ! ;
 
-: .sourcepos1 ( xpos -- )
-    decode-pos1 .sourcepos3 ;
+: .sourceview ( view -- )
+    decode-view .sourcepos3 ;
     
-: compile-sourcepos ( compile-time: -- ; run-time: -- xpos )
+: compile-sourcepos ( compile-time: -- ; run-time: -- view )
     \ compile the current source position as literals: nfile is the
     \ source file index, nline the line number within the file.
-    current-sourcepos1
+    current-sourceview
     postpone literal ;
 
 : .sourcepos ( nfile npos -- )

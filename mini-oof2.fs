@@ -1,6 +1,6 @@
 \ Mini-OOF2, using current object+Gforth primitives    09jan12py
 
-\ Copyright (C) 2012,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -24,11 +24,15 @@ Defer default-method ' noop IS default-method
 \ template for methods and ivars
 
 Create o 0 ,  DOES> @ o#+ [ 0 , ] + ;
-comp: >body @ postpone o#+ , ;
-: to-m >body @ + ! ;
+opt: ( xt -- ) >body @ postpone o#+ , ;
+to: m-to ( xt -- ) >body @ + ! ;
+to-opt: ( xt -- ) >body @ postpone lit+ , postpone ! ;
+defer@: m-defer@ ( xt -- ) >body @ + @ ;
+defer@-opt: ( xt -- ) >body @ postpone lit+ , postpone @ ;
 Create m 0 ,  DOES> @ o#+ [ -1 cells , ] @ + perform ;
-comp: >body @ cell/ postpone o#exec , ;
-' to-m set-to
+opt: ( xt -- ) >body @ cell/ postpone o#exec , ;
+' m-to set-to
+' m-defer@ set-defer@
 ' o Value var-xt
 ' m Value method-xt
 : current-o  ['] o to var-xt  ['] m to method-xt ;
@@ -37,7 +41,7 @@ comp: >body @ cell/ postpone o#exec , ;
 
 : o+field, ( addr body -- addr' )
     @ o + ;
-comp: drop @ postpone o#+ , ;
+opt: drop @ postpone o#+ , ;
 
 \ core system
 
@@ -50,8 +54,7 @@ comp: drop @ postpone o#+ , ;
   dup >osize 2@ ['] var IS +field  ['] o+field, IS +field, ;
 : end-class  ( class methods vars "name" -- )
   , dup , here >r 0 U+DO ['] default-method defer@ , cell +LOOP
-  dup r@ swap >methods @ move  standard:field
-  r> Value ;
+  dup r@ swap >methods @ move  r> Value ;
 : >vt ( class "name" -- addr )  ' >body @ + ;
 : :: ( class "name" -- ) >vt @ compile, ;
 0 cells , 0 cells ,  here Value object
@@ -81,6 +84,8 @@ static-a to allocater
     cell+ dup dup cell- @ >osize @ erase ;
 : dispose ( o:o -- o:0 )  o cell- dup dup @ >osize @ cell+ erase
     allocater >o :free o>  0 >o rdrop ;
+: clone ( o:o -- o' )
+    o cell- @ new o cell- over cell- dup @ >osize @ cell+ move ;
 
 dynamic-alloc new Constant dynamic-a
 dynamic-a to allocater
@@ -103,14 +108,16 @@ dynamic-a to allocater
 
 \ dot parser .foo -> >o foo o>
 
-: >oo> ( xt table -- )  postpone >o compile, postpone o> ;
-:noname ( object xt -- ) swap >o execute o> ; ' >oo> ' lit, recognizer r:moof2
+: >oo> ( xt table -- )  postpone >o name-compsem postpone o> ;
+:noname ( object xt -- ) swap >o execute o> ; ' >oo> ' lit, rectype: rectype-moof2
 
-: rec:moof2 ( addr u -- xt r:moof2 | r:fail )
+: rec-moof2 ( addr u -- xt rectype-moof2 | rectype-null )
     over c@ '.' = over 1 > and
-    IF  1 /string recognize
-	dup >namevt @ >vtlit, @ ['] noop =
-	IF  r:moof2  ELSE  drop r:fail  THEN
-    ELSE  2drop r:fail  THEN ;
+    IF  1 /string sp@ >r forth-recognizer recognize
+	rectype-name = IF  rdrop rectype-moof2
+	ELSE  r> sp!  2drop rectype-null  THEN
+    ELSE  2drop rectype-null  THEN ;
 
-' rec:moof2 get-recognizers 1+ set-recognizers
+' rec-moof2 get-recognizers 1+ set-recognizers
+
+standard:field

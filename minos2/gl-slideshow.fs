@@ -1,6 +1,6 @@
 \ Open GL slide show demo
 
-\ Copyright (C) 2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -20,8 +20,7 @@
 require minos2/gl-helper.fs
 require minos2/jpeg-exif.fs
 
-also [IFDEF] android android [THEN]
-also opengl
+also opengl also [IFDEF] android android [THEN]
 
 \ six slides in memory, cyclic wraparound
 
@@ -105,19 +104,19 @@ Variable slidelist
 	r> thumbs perform
     THEN ;
 
-$FFFFFFFF Value slcolor
+white# FValue slcolor
 Variable xoff
 Variable yoff
 
 : sl-rectangle { f: x1 f: y1 f: x2 f: y2 -- }
-    v0 i0 >v
-    x1 xoff sf@ f+  y2 yoff sf@ f+ >xy slcolor rgba>c n> 0e 0e >st v+
-    x2 xoff sf@ f+  y2 yoff sf@ f+ >xy slcolor rgba>c n> 1e 0e >st v+
-    x2 xoff sf@ f+  y1 yoff sf@ f+ >xy slcolor rgba>c n> 1e 1e >st v+
-    x1 xoff sf@ f+  y1 yoff sf@ f+ >xy slcolor rgba>c n> 0e 1e >st v+
+    vi0 >v
+    x1 xoff sf@ f+  y2 yoff sf@ f+ >xy slcolor i>c n> 0e 0e >st v+
+    x2 xoff sf@ f+  y2 yoff sf@ f+ >xy slcolor i>c n> 1e 0e >st v+
+    x2 xoff sf@ f+  y1 yoff sf@ f+ >xy slcolor i>c n> 1e 1e >st v+
+    x1 xoff sf@ f+  y1 yoff sf@ f+ >xy slcolor i>c n> 0e 1e >st v+
     v> 0 i, 1 i, 2 i, 0 i, 2 i, 3 i, ;
 
-: blend ( alpha -- ) $FF fm* f>s $FF and $FFFFFF00 or to slcolor ;
+: blend ( alpha -- ) white# f+ to slcolor ;
 : xshift ( delta -- ) xoff sf! ;
 : yshift ( delta -- ) yoff sf! ;
 
@@ -235,11 +234,11 @@ Variable current-slide
 	    0 of  !click  endof
 	endcase
     THEN  rdrop
-    need-sync @ IF  slideshow-init slide-reshow  need-sync off  THEN ;
+    ?sync IF  slideshow-init slide-reshow  -sync  THEN ;
 
 : (reshow) ( -- )
     slide-reshow
-    BEGIN  prefetch slide-input  level# @ 0= UNTIL  need-sync on ;
+    BEGIN  prefetch slide-input  level# @ 0= UNTIL  +sync ;
 
 : reshow ( -- ) [IFDEF] android  kbflag @ IF  togglekb  THEN [THEN]
     1 level# +! slideshow-init (reshow) ;
@@ -272,11 +271,11 @@ Variable current-slide
 	    THEN  0
 	endcase
     THEN  rdrop
-    need-sync @ IF  slideshow-init 0 thumb-slide  need-sync off  THEN ;
+    ?sync IF  slideshow-init 0 thumb-slide  -sync  THEN ;
 
 : rethumb ( -- ) [IFDEF] android  kbflag @ IF  togglekb  THEN [THEN] 0e >y-pos
     1 level# +! slideshow-init 0 thumb-slide
-    BEGIN  prefetch-thumb  thumb-input  level# @ 0= UNTIL  need-sync on ;
+    BEGIN  prefetch-thumb  thumb-input  level# @ 0= UNTIL  +sync ;
 : slide-show ( addr u -- )
     slidelist $[]slurp-file current-slide off reshow ;
 : thumb-show ( addr u -- )
@@ -286,4 +285,4 @@ previous previous
 
 \ s" slide.lst" slide-show
 
-win 0= [IF] window-init [THEN]
+win 0= [IF] window-init [IFDEF] map-win map-win [THEN] [THEN]

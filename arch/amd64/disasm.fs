@@ -1,8 +1,8 @@
 \ *** Disassembler for amd64 ***
 
-\ Copyright (C) 1992-2000 by Bernd Paysan (486 disassemlber)
+\ Copyright (C) 1992-2000 by Bernd Paysan (486 disassembler)
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -190,7 +190,12 @@ Create .16disp  ' noop , ' +8b , ' +16b ,
 : .rmod ( addr -- addr' )  mod@ >r .addr r> ., .r/reg ;
 
 : .imm  ( addr -- addr' )  length @
-  dup 0= IF  drop  dup l@  .$ds 4 + exit  THEN
+    dup 0= IF  drop dup l@  .$ds 4 + exit  THEN
+  1 =    IF  wcount .$ds exit  THEN  count .$bs ;
+: .imm64  ( addr -- addr' )  length @
+    dup 0= IF  drop dup
+	w? IF  @ .$ds cell+  ELSE  l@  .$ds 4 +  THEN
+	exit  THEN
   1 =    IF  wcount .$ds exit  THEN  count .$bs ;
 
 \ .ari                                                 07feb93py
@@ -208,9 +213,9 @@ Defer .code
 : .rexdec  .amd64mode @ IF  opcode @ rex !  .code  rex off  EXIT  THEN
     ." dec" .gr ;
 
-: .igrv  .gr ., .imm ;
+: .igrv  .gr ., .imm64 ;
 : .igrb  2 length ! .igrv ;
-: .igr   .b? .igrv ;
+: .igr   .b? .gr ., .imm ;
 : .modb  .b? tab .rmod ;
 
 : .xcha  .gr ., 0 .m/reg ;
@@ -361,15 +366,15 @@ Create fopatable
 
 : .rep ( ip -- ip' )
     dup c@ $F0 and $40 = IF
-	dup 1+ c@ 0F = IF
-	    count  10 + rex !  .code  EXIT
-	ELSE  dup c@ 0F = IF  10 rex !  .code  EXIT  THEN  THEN  THEN
+	dup 1+ c@ $0F = IF
+	    count  $10 + rex !  .code  EXIT  THEN
+    ELSE  dup c@ $0F = IF  $10 rex !  .code  EXIT  THEN  THEN
     ." rep " .code  ;
 : .repe ( ip -- ip' )
     dup c@ $F0 and $40 = IF
 	dup 1+ c@ 0F = IF
-	    count  20 + rex !  .code  EXIT
-	ELSE  dup c@ 0F = IF  20 rex !  .code  EXIT  THEN  THEN  THEN
+	    count  $20 + rex !  .code  EXIT  THEN
+    ELSE  dup c@ $0F = IF  $20 rex !  .code  EXIT  THEN  THEN
     ." repe " .code  ;
 
 \ vex SSE codes (les/lds in 16/32 bit mode)

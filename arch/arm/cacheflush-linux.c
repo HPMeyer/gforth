@@ -1,7 +1,7 @@
 /*
   ARM icache flush support using Linux syscall.  
 
-  Copyright (C) 2000,2008,2012 Free Software Foundation, Inc.
+  Copyright (C) 2000,2008,2012,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -19,6 +19,7 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111, USA.
 */
+#include "config.h"
 #include <stddef.h>
 
 void gforth_cacheflush(void *p, size_t size) 

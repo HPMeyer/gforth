@@ -1,6 +1,6 @@
-\ -> (to/is replacement) recognizer
+\ locate position in backtrace
 
-\ Copyright (C) 2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,14 +17,12 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-' (int-to) ' (comp-to) ' lit, recognizer r:to
+require string.fs
 
-: rec:to ( addr u -- xt r:to | r:fail )
-    \G words prefixed with @code{->} are treated as if preceeded by
-    \G @code{TO} or @code{IS}
-    2dup s" ->" string-prefix?  0= IF  2drop  r:fail  EXIT  THEN
-    2 /string dup 0= IF  2drop  r:fail  EXIT  THEN
-    recognize dup r:fail = ?EXIT
-    name?int r:to ;
+: record-locs ( -- )
+    \G record locations to annotate backtraces with source locations
+    here to locs-start  locs[] $free
+    ['] xt-location1 is xt-location ;
 
-' rec:to get-recognizers 1+ set-recognizers
+locs[] $saved
+record-locs

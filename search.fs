@@ -1,6 +1,6 @@
 \ search order wordset                                 14may93py
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2005,2007,2011,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2005,2007,2011,2015,2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -148,21 +148,6 @@ Vocabulary Root ( -- ) \ gforth
   \G order (for Gforth, this is the word list @code{Root}).
   0 1 vocstack set-stack Root also ;
 
-[ifundef] 'image
-defer 'image ( -- ) ' noop is 'image
-[then]
-
-:noname ( -- )
-    \ save search order here
-    defers 'image vocstack $save ; is 'image
-
-: init-vp  ( -- )
-    vocstack $boot ;
-
-:noname
-   init-vp DEFERS 'cold ;
-IS 'cold
-
 Only Forth also definitions
 
 \ set initial search order                             14may93py
@@ -220,9 +205,9 @@ lookup ! \ our dictionary search order becomes the law ( -- )
 \G print the name of the wordlist represented by @var{wid}.  Can
 \G only print names defined with @code{vocabulary} or
     \G @code{wordlist constant}, otherwise prints @samp{address}.
-    dup body> head?  IF  body> id.  EXIT  THEN
+    dup body> xt?  IF  body> id.  EXIT  THEN
     #10 cells 2 cells DO
-	dup wordlist-struct %size + I + head?
+	dup wordlist-struct %size + I + xt?
 	true = if ( wid nt )
 	    dup wordlist-struct %size + I + swap >r
 	    dup name>int dup >code-address docon: = swap >body @ r> = and if

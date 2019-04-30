@@ -1,6 +1,6 @@
 \ converts primitives to, e.g., C code 
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2009,2010,2011,2013,2015 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2009,2010,2011,2013,2015,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -777,7 +777,7 @@ stack inst-stream IP Cell
     state-enabled @ ;
 
 : .state ( state -- )
-    0 >body - >name .name ;
+    body> >name .name ;
 
 : set-ss ( ss stack state -- )
     state-sss swap stack-number @ th ! ;
@@ -1243,8 +1243,10 @@ variable tail-nextp2 \ xt to execute for printing NEXT_P2 in INST_TAIL
 : output-label ( -- )  
     ." INST_ADDR(" prim prim-c-name 2@ type ." )," cr ;
 
-: output-alias ( -- ) 
-    ( primitive-number @ . ." alias " ) ." Primitive " prim prim-name 2@ type cr ;
+: output-alias ( -- )
+    name-line @ 1- . 0 . ." #loc " name-filename 2@ type space
+    \ I don't know why the "1-" above is necessary, but it works
+    ." Primitive " prim prim-name 2@ type cr ;
 
 defer output-c-prim-num ( -- )
 
@@ -1274,9 +1276,9 @@ is output-c-prim-num
     output-tag-file
     prim prim-name 2@ 1+ type
     127 emit
-    space prim prim-name 2@ type space
+    prim prim-name 2@ type
     1 emit
-    name-line @ 0 .r
+    name-line @ 1- 0 .r
     ." ,0" cr ;
 
 : output-vi-tag ( -- )

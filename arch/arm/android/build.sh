@@ -1,5 +1,5 @@
 #!/bin/bash
-#Copyright (C) 2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+#Copyright (C) 2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -15,6 +15,8 @@
 
 #You should have received a copy of the GNU General Public License
 #along with this program. If not, see http://www.gnu.org/licenses/.
+
+nprocs=`nproc || echo 1`
 
 function extra_apps {
     for i in $EXTRADIRS
@@ -38,13 +40,10 @@ function extra_features {
 }
 
 . build.local
+export PKG_CONFIG_PATH
 TOOLCHAIN=$(which $TARGET-gcc | sed -e s,/bin/.*-gcc,,g)
 NDK=${NDK-~/proj/android-ndk-r10e}
 SRC=$(cd ../../..; pwd)
-
-mkdir -p build/unix
-
-cp $NDK/sources/android/cpufeatures/*.[ch] build/unix
 
 while [ "${1%%[^\+]*}" == '+' ]
 do
@@ -71,7 +70,7 @@ exec 3>&1 1>build.log 2>&1
 
 if [ ! -f local.properties ]
 then
-    android update project -p . -s --target android-14
+    android update project -p . -s --target android-26
 fi
 
 #eval $(grep ^sdk.dir= local.properties| sed -e 's/^sdk.dir=/sdk_dir=/g')
@@ -85,7 +84,7 @@ ENGINES="gforth-fast gforth-itc"
 
 GFORTH_VERSION=$($GFORTH_DITC --version 2>&1 | cut -f2 -d' ')
 
-LIBCCNAMED=lib/$($GFORTH_DITC --version 2>&1 | cut -f1-2 -d ' ' | tr ' ' '/')/$machine/libcc-named/.libs
+LIBCCNAMED=lib/gforth/current/$machine/libcc-named/.libs
 
 if [ ! -f $SRC/configure ]
 then
@@ -113,34 +112,37 @@ done
 
 if [ "$1" != "--no-gforthgz" ]
 then
+    mkdir -p build/debian/sdcard/gforth/$machine/gforth/site-forth
     (cd build
 	if [ "$1" != "--no-config" ]
 	then
 	    echo -n "$machine: configure" 1>&3
-	    $SRC/configure --host=$TARGET --with-cross=android --with-ditc=$GFORTH_DITC --prefix= --datarootdir=/sdcard --libdir=/sdcard/gforth/$machine --libexecdir=/lib --includedir=$PWD/include --enable-lib $EXTRAS || exit 1
+	    $SRC/configure --host=$TARGET --with-cross=android --with-ditc=$GFORTH_DITC --prefix= --datarootdir=/sdcard --libdir=/sdcard/gforth/$machine --libexecdir=/lib --includedir=$PWD/include --enable-lib --disable-version $EXTRAS || exit 1
 	fi
 	echo -n " make" 1>&3
-	make || exit 1
+	make -j$nprocs || exit 1
 	make prefix=$TOOLCHAIN/sysroot/usr install-include
 	rm -rf debian/sdcard
 	echo -n " extras" 1>&3
 	if [ "$1" != "--no-config" ]; then make extras || exit 1; fi
 	echo -n " debdist" 1>&3
+	mkdir -p debian/sdcard/gforth/current/doc
+	cp doc/gforth.txt debian/sdcard/gforth/current/doc
 	make setup-debdist || exit 1) || exit 1
     if [ "$1" == "--no-config" ]
     then
 	CONFIG=no; shift
     fi
     
-    mkdir -p build/debian/sdcard/gforth/$machine/gforth/site-forth
     mkdir -p res/raw
     cp *.{fs,fi,png,jpg} build/debian/sdcard/gforth/$machine/gforth/site-forth
     (cd build/debian/sdcard
-     mkdir -p gforth/home gforth/site-forth
-     gforth archive.fs gforth/home/ gforth/site-forth/ $(find gforth/$GFORTH_VERSION -type f) $(find gforth/site-forth -type f)) | gzip -9 >res/raw/gforth
+     mkdir -p gforth/home gforth/site-forth gforth/current/minos2/fonts
+     cp /usr/share/fonts/truetype/emoji/fa-merged-900.ttf gforth/current/minos2/fonts
+     gforth archive.fs gforth/home/ gforth/site-forth/ $(find gforth/current -type f) $(find gforth/site-forth -type f)) | gzip -9 >res/raw/gforth
     (cd build/debian/sdcard
      rm gforth/$machine/lib*
-     rm -rf gforth/$machine/gforth/$GFORTH_VERSION/$machine/libcc-named
+     rm -rf gforth/$machine/gforth/current/$machine/libcc-named
      gforth archive.fs $machine/gforth/site-forth/ $(find gforth/$machine/gforth -type f)) | gzip -9 >$LIBS/libgforth-${machine}gz.so
 else
     shift

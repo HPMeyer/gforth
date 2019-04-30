@@ -1,6 +1,6 @@
 \ backtrace handling
 
-\ Copyright (C) 1999,2000,2003,2004,2006,2007,2012,2013,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1999,2000,2003,2004,2006,2007,2012,2013,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -28,7 +28,8 @@
     if
 	rp@ [ 2 cells ]L +
     else \ throw by signal handler with insufficient information
-	handler @ cell - \ beyond that we know nothing
+	rp0 @ [ forthstart 6 cells + ]L @ -
+	\ handler @ cell - \ beyond that we know nothing
     then
     backtrace-rp0 @ [ 1 cells ]L - over - 0 max ;
 
@@ -57,11 +58,11 @@ IS store-backtrace
 	drop
     then  0 ;
 
-: print-bt-entry ( return-stack-item -- )
-    >bt-entry ?dup-IF  .name  THEN ;
-
 defer .backtrace-pos ( addr -- )
 ' drop is .backtrace-pos
+
+: print-bt-entry ( return-stack-item -- )
+    >bt-entry ?dup-IF  .name  THEN ;
 
 : print-backtrace ( addr1 addr2 -- )
     \G print a backtrace for the return stack addr1..addr2
@@ -88,28 +89,20 @@ IS dobacktrace
 is defer-default
 [then]
 
-\ locate position in backtrace
+\ print backtrace location
 
-[ifdef] .backtrace-pos
-    40 value bt-pos-width
-    0 Value locs-start
-    Variable locs[]
-    : xt-location1 ( addr -- addr )
-	dup locs-start - cell/ >r
-	current-sourcepos1 dup r> 1+ locs[] $[] cell- 2! ;
-    : record-locs ( -- )
-	\G record locations to annotate backtraces with source locations
-	here to locs-start  locs[] $free
-	['] xt-location1 is xt-location ;
-    : addr>pos1 ( addr -- pos1 / 0 )
-	dup cell- locs-start here within locs-start and ?dup-IF
-	    over cell- swap - cell/ locs[] $[] @
-	    ?dup-IF  nip  EXIT  THEN
-	THEN  drop 0 ;
+: addr>view ( addr -- view / 0 )
+    dup cell- locs-start here within locs-start and ?dup-IF
+	over cell- swap - cell/ locs[] $[] @
+	?dup-IF  nip  EXIT  THEN
+    THEN  drop 0 ;
 
-    : .backtrace-pos1 ( addr -- )
-	addr>pos1 dup IF
-	    ['] .sourcepos1 $tmp 2dup type x-width  THEN
-	bt-pos-width swap - 1 max spaces ;
-    ' .backtrace-pos1 is .backtrace-pos
-[then]
+: .sourceview-width ( view -- u )
+    \ prints sourceview, returns width of printed string
+    ['] .sourceview $tmp 2dup type x-width ;
+    
+: .backtrace-view ( addr -- )
+    addr>view dup IF
+	.sourceview-width THEN
+    bt-pos-width swap - 1 max spaces ;
+' .backtrace-view is .backtrace-pos

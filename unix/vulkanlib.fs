@@ -1,6 +1,6 @@
 \ wrapper to load Swig-generated libraries
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,15 +17,9 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-Voctable vulkan \ needs to be case sensitive
+cs-vocabulary vulkan \ needs to be case sensitive
 get-current also vulkan definitions
 
-c-library vulkanlib
-    \c #include <vulkan/vulkan.h>
-
-    s" vulkan" add-lib
-    
-    include unix/vulkan.fs
-end-c-library
+include unix/vulkan.fs
 
 set-current

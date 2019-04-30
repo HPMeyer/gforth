@@ -1,6 +1,6 @@
 \ smart .s                                             09mar2012py
 
-\ Copyright (C) 2012 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -26,13 +26,21 @@
 	ELSE  true  THEN   ENDTRY ;
 
 : string? ( addr u -- flag )
-    TRY  dup #80 u> throw  bounds ?DO  I c@ bl < IF  -1 throw  THEN  LOOP
+    TRY  dup #80 #1 within throw  bounds ?DO  I c@ bl < IF  -1 throw  THEN  LOOP
 	IFERROR  2drop drop false nothrow ELSE  true  THEN  ENDTRY ;
 
 : .string. ( addr u -- )
     '"' emit type '"' emit space ;
 : .addr. ( addr -- )
-    dup >name dup IF  ." ' " .name drop  ELSE  drop hex.  THEN ;
+    dup xt? if
+	dup name>string dup if
+	    ." `" type space drop exit
+	else
+	    2drop
+	then
+    then
+    hex. ;
+
 : .var. ( addr -- )
     dup body> >name dup IF  .name drop  ELSE  drop hex.  THEN ;
 
@@ -47,4 +55,11 @@ Variable smart.s-skip
 	ELSE  .  THEN
     THEN ;
 
-' smart.s. IS .s.
+' smart.s. is .s.
+
+: ... ( x1 .. xn -- x1 .. xn )
+    action-of .s. >r
+    ['] smart.s. IS .s. .s
+    r> IS .s. ;
+
+

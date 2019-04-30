@@ -1,6 +1,6 @@
 \ wrapper to load Swig-generated libraries
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,26 +17,26 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-Voctable gps \ needs to be case sensitive
+cs-vocabulary gps \ needs to be case sensitive
 get-current also gps definitions
 
-c-library gpslib
-    \c #include <gps.h>
+also c-lib s" n" vararg$ $! previous
 
-    s" gps" add-lib
-    s" n" vararg$ $!
-    
-    include unix/gps.fs
-end-c-library
+include unix/gps.fs
 
 set-current
 
 gps_data_t buffer: gps-data
+GPSD_API_MAJOR_VERSION 7 >= [IF]
+    #33 cells  buffer: gps-message
+[THEN]
 
 : gps-local-open ( -- flag )
     s" shared memory" s" 2947" gps-data gps_open ;
 
 : gps-fix ( -- addr )
-    gps-data gps_read drop gps-data gps_data_t-fix ;
+    gps-data
+    [ GPSD_API_MAJOR_VERSION 7 >= ] [IF] gps-message #33 cells [THEN]
+    gps_read drop gps-data gps_data_t-fix ;
 
 previous

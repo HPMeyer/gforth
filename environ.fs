@@ -1,6 +1,6 @@
 \ environmental queries
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2007,2012,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2007,2012,2015,2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -21,6 +21,15 @@
 [IFUNDEF] float/ : float/ 1 floats / ; [THEN]
 
 \ wordlist constant environment-wordlist
+
+: (0s) ( n -- ) 0 +do '0' c, loop ;
+: type, ( addr u -- ) here over allot swap move ;
+: version-string>internal ( -- )
+    version-string
+    '.' $split 2swap 3 over - (0s) type, '.' c,
+    '.' $split 2swap 3 over - (0s) type, '.' c,
+    '_' $split 2swap 3 over - (0s) type, dup
+    IF '_' c, type, ELSE 2drop THEN ;
 
 vocabulary environment ( -- ) \ gforth
 \ for win32forth compatibility
@@ -90,7 +99,8 @@ true constant CORE-EXT ( -- f ) \ environment
 -1. 2constant MAX-UD ( -- ud ) \ environment
 \G Largest usable unsigned double.
 
-version-string 2constant gforth ( -- c-addr u ) \ gforth-environment
+here version-string>internal here over -
+2constant gforth ( -- c-addr u ) \ gforth-environment
 \G Counted string representing a version string for this version of
 \G Gforth (for versions>0.3.0).  The version strings of the various
 \G versions are guaranteed to be ordered lexicographically.

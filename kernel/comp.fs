@@ -1,6 +1,6 @@
 \ compiler definitions						14sep97jaw
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -45,18 +45,17 @@
     dp ! ;
 [THEN]
 
+: small-allot ( n -- addr )
+    dp @ tuck + dp ! ;
+
 : c,    ( c -- ) \ core c-comma
     \G Reserve data space for one char and store @i{c} in the space.
-    here 1 chars allot c! ;
-
-: ,     ( w -- ) \ core comma
-    \G Reserve data space for one cell and store @i{w} in the space.
-    here cell allot ! ;
+    1 chars small-allot c! ;
 
 : 2,	( w1 w2 -- ) \ gforth
     \G Reserve data space for two cells and store the double @i{w1
     \G w2} there, @i{w2} first (lower address).
-    here 2 cells allot 2! ;
+    2 cells small-allot 2! ;
 
 \ : aligned ( addr -- addr' ) \ core
 \     [ cell 1- ] Literal + [ -1 cells ] Literal and ;
@@ -122,29 +121,25 @@ variable next-prelude
   \G @i{wid} is the identifier of the current compilation word list.
   current @ ;
 
-: str>loadfilename# ( addr u -- n )
-    included-files $@ bounds ?do ( addr u )
-	2dup I $@ str= if
-	    2drop I included-files $@ drop - cell/ unloop exit
-	endif
-    cell +loop
-    2dup s" *a block*"          str= IF  2drop -3  EXIT  THEN
-    2dup s" *evaluated string*" str= IF  2drop -2  EXIT  THEN
-    2drop -1 ;
-
 : encode-pos ( nline nchar -- npos )
     $ff min swap 8 lshift + ;
 
 : current-sourcepos3 ( -- nfile nline nchar )
     loadfilename# @ sourceline# input-lexeme 2@ drop source drop - ;
 
-: encode-pos1 ( nfile nline nchar -- xpos )
+: encode-view ( nfile nline nchar -- xpos )
     encode-pos $7fffff min swap 23 lshift or ;
 
-: current-sourcepos1 ( -- xpos )
-    current-sourcepos3 encode-pos1 ;
+0 Value replace-sourceview \ used by #loc to modify view,
 
-: view, ( -- ) current-sourcepos1 , ;
+: current-sourceview ( -- xpos )
+    current-sourcepos3 encode-view ;
+
+: current-view ( -- xpos )
+    replace-sourceview current-sourceview over select ;
+
+: view, ( -- )
+    current-view , 0 to replace-sourceview ;
 
 Defer check-shadow ( addr u wid -- )
 :noname drop 2drop ; is check-shadow
@@ -156,15 +151,15 @@ Defer check-shadow ( addr u wid -- )
     [ [IFDEF] prelude-mask ] prelude, [ [THEN] ]
     dup aligned here + dup maxaligned >align
     view,
-    dup cell+ here + dup maxaligned >align
+    dup here + dup maxaligned >align
     nlstring,
-    r@ 1 or A, 0 A, here last !  \ link field; before revealing, it contains the
+    r> 1 or A, 0 A, here last !  \ link field; before revealing, it contains the
     \ tagged reveal-into wordlist
-    alias-mask lastflags cset
-    next-prelude @ 0<> prelude-mask and lastflags cset
-    next-prelude off
-    cfalign
-    last @ name>string r> check-shadow ;
+    \   alias-mask lastflags cset
+    [ [IFDEF] prelude-mask ]
+	next-prelude @ 0<> prelude-mask and lastflags cset
+	next-prelude off
+    [ [THEN] ] ;
 
 defer record-name ( -- )
 ' noop is record-name
@@ -200,7 +195,7 @@ defer header ( -- ) \ gforth
     ['] nextname-header IS (header) ;
 
 : noname, ( -- )
-    0 last ! vt,  here cell+ dup cfaligned >align alias-mask , 0 , 0 , ;
+    0 last ! vt,  here dup cfaligned >align 0 ( alias-mask ) , 0 , 0 , ;
 : noname-header ( -- )
     noname, input-stream ;
 
@@ -259,7 +254,7 @@ Defer char@ ( addr u -- char addr' u' )
 ' noop Alias recurse
 \g Alias to the current definition.
 
-unlock tlastcfa @ lock AConstant lastcfa
+unlock tlastcfa @ lock >body AConstant lastcfa
 \ this is the alias pointer in the recurse header, named lastcfa.
 \ changing lastcfa now changes where recurse aliases to
 \ it's always an alias of the current definition
@@ -269,7 +264,7 @@ unlock tlastcfa @ lock AConstant lastcfa
 : cfa,     ( code-address -- )  \ gforth	cfa-comma
     here
     dup lastcfa !
-    0 A, 0 ,
+    0 A,
     code-address! ;
 
 defer basic-block-end ( -- )
@@ -278,9 +273,16 @@ defer basic-block-end ( -- )
     0 compile-prim1 ;
 is basic-block-end
 
-defer xt-location ( addr -- addr )
+\ record locations
+
+40 value bt-pos-width
+0 AValue locs-start
+$variable locs[]
+
+: xt-location ( addr -- addr )
 \ note that an xt was compiled at addr, for backtrace-locate functionality
-' noop is xt-location
+    dup locs-start - cell/ >r
+    current-sourceview dup r> 1+ locs[] $[] cell- 2! ;
 
 has? primcentric [IF]
     has? peephole [IF]
@@ -299,12 +301,7 @@ has? primcentric [IF]
 
 : default-name>comp ( nt -- w xt ) \ gforth name-to-comp
     \G @i{w xt} is the compilation token for the word @i{nt}.
-    (name>x) (x>comp)
-    1 = if
-        ['] execute
-    else
-        ['] compile,
-    then ;
+    name>int ['] compile, ;
 
 : [(')]  ( compilation "name" -- ; run-time -- nt ) \ gforth bracket-paren-tick
     (') postpone ALiteral ; immediate restrict
@@ -317,7 +314,7 @@ has? primcentric [IF]
 
 : COMP'    ( "name" -- w xt ) \ gforth  comp-tick
     \g Compilation token @i{w xt} represents @i{name}'s compilation semantics.
-    parse-name recognize '-error name>comp ;
+    parse-name forth-recognizer recognize '-error name>comp ;
 
 : [COMP']  ( compilation "name" -- ; run-time -- w xt ) \ gforth bracket-comp-tick
     \g Compilation token @i{w xt} represents @i{name}'s compilation semantics.
@@ -367,10 +364,11 @@ include ./recognizer.fs
     latest dup 0= abort" last word was headerless"
     >f+c ;
 
+: imm>comp  name>int ['] execute ;
 : immediate ( -- ) \ core
     \G Make the compilation semantics of a word be to @code{execute}
     \G the execution semantics.
-    immediate-mask lastflags cset ;
+    ['] imm>comp set->comp ;
 
 : restrict ( -- ) \ gforth
     \G A synonym for @code{compile-only}
@@ -388,27 +386,49 @@ include ./recognizer.fs
 
 \ : a>comp ( nt -- xt1 xt2 )  name>int ['] compile, ;
 
-: s>int ( nt -- xt )  @ name>int ;
-: s>comp ( nt -- xt1 xt2 )  @ name>comp ;
-: s-to ( val nt -- )  @ (int-to) ;
-opt: drop @ (comp-to) ;
+: defer@, ( xt -- )
+    dup >namevt @ >vtdefer@ @ opt-something, ;
+
+: a>int ( nt -- )  >body @ ;
+: a>comp ( nt -- xt1 xt2 )  name>int ['] compile, ;
+\ dup >r >body @
+\    ['] execute ['] compile, r> >f+c @ immediate-mask and select ;
+
+: s>int ( nt -- xt )  >body @ name>int ;
+: s>comp ( nt -- xt1 xt2 )  >body @ name>comp ;
+: s-to ( val nt -- )
+    \ actually a TO: TO-OPT: word, but cross.fs does not support that
+    >body @ (int-to) ;
+opt: drop >body @ (comp-to) ;
+: s-defer@ ( xt1 -- xt2 )
+    \ actually a DEFER@ DEFER@-OPT: word, but cross.fs does not support that
+    >body @ defer@ ;
+opt: drop >body @ defer@, ;
+: s-compile, ( xt -- )  >body @ compile, ;
 
 : Alias    ( xt "name" -- ) \ gforth
-    Header reveal ['] on vtcopy
-    alias-mask lastflags creset
+    Header reveal ['] on vtcopy  dodefer,
+    ['] a>int set->int ['] a>comp set->comp ['] s-to set-to
+    ['] s-defer@ set-defer@  ['] s-compile, set-optimizer
     dup A, lastcfa ! ;
+
+: alias? ( nt -- flag )
+    >namevt @ >vt>int 2@ ['] a>comp ['] a>int d= ;
 
 : Synonym ( "name" "oldname" -- ) \ Forth200x
     Header  ['] on vtcopy
-    parse-name find-name dup A,
+    parse-name find-name dup 0= #-13 and throw
+    dodefer, dup A,
     dup compile-only? IF  compile-only  THEN  name>int lastcfa !
-    ['] s>int set->int ['] s>comp set->comp ['] s-to set-to reveal ;
+    ['] s>int set->int ['] s>comp set->comp ['] s-to set-to
+    ['] s-defer@ set-defer@  ['] s-compile, set-optimizer
+    reveal ;
 
 : synonym? ( nt -- flag )
     >namevt @ >vt>int 2@ ['] s>comp ['] s>int d= ;
 
 : Create ( "name" -- ) \ core
-    Header reveal dovar, ;
+    Header reveal dovar, ?noname-vt ;
 
 : buffer: ( u "name" -- ) \ core ext
     Create here over 0 fill allot ;
@@ -426,14 +446,14 @@ opt: drop @ (comp-to) ;
     udp @ swap udp +! ;
 
 : User ( "name" -- ) \ gforth
-    Header reveal douser, cell uallot , ;
+    Header reveal douser, ?noname-vt cell uallot , ;
 
 : AUser ( "name" -- ) \ gforth
     User ;
 
-: (Constant)  Header reveal docon, ;
+: (Constant)  Header reveal docon, ?noname-vt ;
 
-: (Value)  Header reveal dovalue, ;
+: (Value)  Header reveal dovalue, ?noname-vt ;
 
 : Constant ( w "name" -- ) \ core
     \G Define a constant @i{name} with value @i{w}.
@@ -450,41 +470,38 @@ opt: drop @ (comp-to) ;
 : AValue ( w "name" -- ) \ core-ext
     (Value) A, ;
 
-: u-to ( n uvalue-xt -- ) >body @ next-task + ! ;
-opt: ( uvalue-xt to-xt -- )
-    drop >body @ postpone useraddr , postpone ! ;
-\g u-to is the to-method for user values; it's xt is only
-\g there to be consumed by @code{set-to}.
-: u-compile, ( xt -- )  >body @ postpone useraddr , postpone @ ;
+Create !-table ' ! A, ' +! A,
+Variable to-style# 0 to-style# !
 
-: UValue ( "name" -- )
-    \G Define a per-thread value
-    Create cell uallot , ['] u-to set-to
-    ['] u-compile, set-optimizer
-  DOES> @ next-task + @ ;
+: to-!, ( table -- )
+    0 to-style# !@ dup 2 u< IF  cells + @ compile,  ELSE  2drop  THEN ;
+: to-!exec ( table -- )
+    0 to-style# !@ dup 2 u< IF  cells + perform  ELSE  2drop  THEN ;
 
-: 2Constant ( w1 w2 "name" -- ) \ double two-constant
-    Create ( w1 w2 "name" -- )
-        2,
-    DOES> ( -- w1 w2 )
-        2@ ;
+: !!?addr!! ( -- ) to-style# @ -1 = -2056 and throw ;
 
-: (Field)  Header reveal dofield, ;
+: (Field)  Header reveal dofield, ?noname-vt ;
 
 \ IS Defer What's Defers TO                            24feb93py
 
 defer defer-default ( -- )
 ' abort is defer-default
 \ default action for deferred words (overridden by a warning later)
-    
+
 : Defer ( "name" -- ) \ gforth
 \G Define a deferred word @i{name}; its execution semantics can be
 \G set with @code{defer!} or @code{is} (and they have to, before first
 \G executing @i{name}.
-    Header Reveal dodefer,
+    Header Reveal dodefer, ?noname-vt
     ['] defer-default A, ;
 
-: >body@ >body @ ;
+\ The following should use DEFER@: and DEFER@-OPT:, but cross.fs does
+\ not support them.
+: defer-defer@ ( xt -- )
+    \ The defer@ implementation of children of DEFER
+    >body @ ;
+opt: drop ( xt -- )
+    >body lit, postpone @ ;
 
 : Defers ( compilation "name" -- ; run-time ... -- ... ) \ gforth
     \G Compiles the present contents of the deferred word @i{name}
@@ -505,14 +522,6 @@ defer defer-default ( -- )
     [ has? peephole [IF] ] finish-code [ [THEN] ]
     defstart ;
 
-extra>-dummy (doextra-dummy)
-: !extra   ( addr -- ) \ gforth store-extra
-    vttemplate >vtcompile, @ ['] udp >namevt @ >vtcompile, @ =
-    IF
-	['] extra, set-optimizer
-    THEN
-    latestxt extra-code! ;
-
 \ call with locals - unused
 
 \ docolloc-dummy (docolloc-dummy)
@@ -522,12 +531,11 @@ extra>-dummy (doextra-dummy)
 Create vttemplate
 0 A,                   \ link field
 ' peephole-compile, A, \ compile, field
-' noop A,              \ post, field
-0 A,                   \ extra field
 ' no-to A,             \ to field
 ' default-name>int A,  \ name>int field
 ' default-name>comp A, \ name>comp field
 ' no-defer@ A,         \ defer@
+0 A,                   \ extra field
 
 \ initialize to one known vt
 
@@ -575,12 +583,13 @@ Create vttemplate
 
 : set-optimizer ( xt -- ) vttemplate >vtcompile, ! ;
 ' set-optimizer alias set-compiler
-: set-lit,      ( xt -- ) vttemplate >vtlit, ! ;
-: set-to        ( xt -- ) vttemplate >vtto ! ;
-: set-defer@    ( xt -- ) vttemplate >vtdefer@ ! ;
+: set-to        ( to-xt -- ) vttemplate >vtto ! ;
+: set-defer@    ( defer@-xt -- ) vttemplate >vtdefer@ ! ;
 : set->int      ( xt -- ) vttemplate >vt>int ! ;
 : set->comp     ( xt -- ) vttemplate >vt>comp ! ;
-: set-does>     ( xt -- ) !doesxt ; \ more work than the aboves
+: set-does>     ( xt -- ) vttemplate >vtextra !
+    created?  IF  ['] does, set-optimizer  THEN
+    dodoes: latestxt ! ;
 
 :noname ( -- colon-sys ) start-xt  set-optimizer ;
 :noname ['] set-optimizer start-xt-like ;
@@ -589,44 +598,85 @@ interpret/compile: opt:
 interpret/compile: comp:
 ( compilation colon-sys1 -- colon-sys2 ; run-time nest-sys -- ) \ gforth
 
-:noname ( -- colon-sys )
-    start-xt  set-lit, ;
-:noname ['] set-lit, start-xt-like ;
-interpret/compile: lit,:
-( compilation colon-sys1 -- colon-sys2 ; run-time nest-sys -- ) \ gforth
+: default-to-opt ( xt1 xt2 -- )
+    swap lit, :, ;
+: to: ( "name1" -- colon-sys ) \ gforth-internal
+    \G Defines a to-word ( v xt -- ) that is not a proper word (it does
+    \G not compile properly), but only useful as parameter for
+    \G @code{set-to}.  The to-word constitutes a part of the TO <name>
+    \G run-time semantics: it stores v (a stack item of the appropriate
+    \G type for <name>) in the storage represented by the xt (which is
+    \G the xt of <name>).  It is usually used only for interpretive
+    \G @code{to}; the compiled @code{to} uses the part after
+    \G @code{to-opt:}.
+    : ['] default-to-opt set-optimizer ;
+: to-opt: ( -- colon-sys ) \ gforth-internal
+    \G Must only be used to modify a preceding to-word defined with
+    \G \code{to:}.  It defines a part of the TO <name> run-time
+    \G semantics used with compiled \code{TO}.  The stack effect of the
+    \G code following @code{to-opt:} must be: ( xt -- ) ( generated: v
+    \G -- ).  The generated code stores v in the storage represented by
+    \G xt.
+    start-xt  set-optimizer postpone drop ;
 
 \ defer and friends
+
+' to: alias defer@:  ( "name1" -- colon-sys ) \ gforth-internal
+\g Defines @i{name1}, not a proper word, only useful as parameter for
+\g @code{set-defer@}.  It defines what @code{defer@} does for the word
+\g to which the @code{set-defer@} is applied.  If there is a
+\g @code{defer@-opt:} following it, that provides optimized code
+\g generation for compiled @code{action-of}.
+' to-opt: alias defer@-opt: ( -- colon-sys ) \ gforth-internal
+\g Optimized code generation for compiled @code{action-of @i{name}}.
+\g The stack effect of the following code must be ( xt -- ), where xt
+\g represents @i{name}; this word generates code with stack effect (
+\g -- xt1 ), where xt1 is the result of xt @code{defer@}.
 
 ' (int-to) alias defer! ( xt xt-deferred -- ) \ gforth  defer-store
 \G Changes the @code{defer}red word @var{xt-deferred} to execute @var{xt}.
 
-: (comp-to) ( xt -- )
-    \g TO uses the TO-xt for interpretation and compilation.
-    \g Interpretation is straight-forward execute with ( value xt -- )
-    \g on the stack, so a normal >BODY ! (with the appropriate !) does
-    \g the TO action.  Compilation uses the compile,-Method of this
-    \g xt, i.e. that method will see ( value-xt to-xt -- ) as stack
-    \g effect.
-    dup >namevt @ >vtto @ compile, ;
+: (comp-to) ( xt -- ) ( generated code: v -- )
+    \g in compiled @code{to @i{name}}, xt is that of @i{name}.  This
+    \g word generates code for storing v (of type appropriate for
+    \g @i{name}) there.  This word is a factor of @code{to}.
+    dup >namevt @ >vtto @ opt-something, \ this OPT-SOMETHING, calls the
+    \ TO-OPT: part of the SET-TO part of the defining word of <name>.
+;
 
-: value! ( n value-xt -- ) \ gforth  value-store
-    \g this is the TO-method for normal values; it's tickable, but
-    \g the only purpose of its xt is to be consumed by @code{set-to}.
-    >body ! ;
-opt: ( value-xt to-xt -- )
-    drop >body postpone ALiteral postpone ! ;
-    
+\ The following should use TO: OPT-TO:, but that's not supported by cross.fs
+: value-to ( n value-xt -- ) \ gforth-internal
+    \g this is the TO-method for normal values; it's tickable, but the
+    \g only purpose of its xt is to be consumed by @code{set-to}.  It
+    \g does not compile like a proper word.
+    >body !-table to-!exec ;
+opt: drop ( value-xt -- ) \ run-time: ( n -- )
+     >body postpone ALiteral !-table to-!, ;
+
 : <IS> ( "name" xt -- ) \ gforth
     \g Changes the @code{defer}red word @var{name} to execute @var{xt}.
-    record-name (') (name>x) drop (int-to) ;
+    record-name (') (int-to) ;
 
 : [IS] ( compilation "name" -- ; run-time xt -- ) \ gforth bracket-is
     \g At run-time, changes the @code{defer}red word @var{name} to
     \g execute @var{xt}.
-    record-name (') (name>x) drop (comp-to) ; immediate restrict
+    record-name (') (comp-to) ; immediate restrict
 
-' <IS> ' [IS] interpret/compile: TO ( value "name" -- )
-' <IS> ' [IS] interpret/compile: IS ( value "name" -- )
+' <IS> ' [IS] interpret/compile: TO ( value "name" -- ) \ core-ext
+\g changes the value of @var{name} to @var{value}
+' <IS> ' [IS] interpret/compile: IS ( value "name" -- ) \ core-ext
+\g changes the @code{defer}red word @var{name} to execute @var{value}
+
+: <+TO>  1 to-style# ! <IS> ;
+: <addr>  -1 to-style# ! <IS> ;
+
+: [+TO]  1 to-style# ! postpone [IS] ; immediate restrict
+: [addr]  -1 to-style# ! postpone [IS] ; immediate restrict
+
+' <+TO> ' [+TO] interpret/compile: +TO ( value "name" -- ) \ gforth
+\g increments the value of @var{name} by @var{value}
+' <addr> ' [addr] interpret/compile: addr ( "name" -- addr ) \ gforth
+\g provides the address @var{addr} of the value stored in @var{name}
 
 \ \ : ;                                                  	24feb93py
 
@@ -655,11 +705,15 @@ defer 0-adjust-locals-size ( -- )
 
 : : ( "name" -- colon-sys ) \ core	colon
     free-old-local-names
-    Header (:noname) ;
+    Header (:noname) ?noname-vt ;
+
+: noname-vt ( -- )
+    \G modify vt for noname words
+    ['] noop set->int  ['] (noname->comp) set->comp ;
+: ?noname-vt ( -- ) last @ 0= IF  noname-vt  THEN ;
 
 : :noname ( -- xt colon-sys ) \ core-ext	colon-no-name
-    noname, here (:noname)
-    ['] noop set->int  ['] (noname->comp) set->comp ;
+    noname, here (:noname) noname-vt ;
 
 : ; ( compilation colon-sys -- ; run-time nest-sys ) \ core	semicolon
     ;-hook [compile] exit ?colon-sys
@@ -670,27 +724,18 @@ defer 0-adjust-locals-size ( -- )
     \ concat two xts into one
     >r >r :noname r> compile, r> compile, postpone ; ;
 
-: recognizer ( int-xt comp-xt post-xt "name" -- )
+: rectype ( int-xt comp-xt post-xt -- rectype )
+    \G create a new unnamed recognizer token
+    here >r rot , swap , , r> ;
+
+: rectype: ( int-xt comp-xt post-xt "name" -- )
     \G create a new recognizer table
-    >r  ['] drop swap concat >r
-    >r :noname r> compile, postpone ;
-    r> set-optimizer r> set-lit,  Constant ;
+    Create rectype drop ;
 
 \ does>
 
-: doesxt, ( xt -- )
-    dup >body postpone literal  cell+ @ compile, ;
-
-: !doesxt ( xt -- ) \ gforth store-doesxt
-    latestxt doesxt-code!
-    ['] doesxt, set-optimizer ;
-
-: !does    ( addr -- ) \ gforth	store-does
-    vttemplate >vtcompile, @ ['] udp >namevt @ >vtcompile, @ =
-    IF
-	['] spaces >namevt @ >vtcompile, @ set-optimizer
-    THEN
-    latestxt does-code! ;
+: created? ( -- flag )
+    vttemplate >vtcompile, @ ['] variable, = ;
 
 : comp-does>; ( some-sys flag lastxt -- )
     \ used as colon-sys xt; this is executed after ";" has removed the
@@ -714,45 +759,23 @@ defer 0-adjust-locals-size ( -- )
 
 ' int-does> ' comp-does> interpret/compile: does> ( compilation colon-sys1 -- colon-sys2 )
 
-\ new interpret/compile:
+\ for cross-compiler's interpret/compile:
 
-: i/c>int ( nt -- xt )  @ ;
-: i/c>comp ( nt -- xt1 xt2 ) cell+ @ ['] execute ;
-
-\ : interpret/compile? ( xt -- flag ) >namevt @ >vt>int @ ['] i/c>int = ;
-
-: interpret/compile: ( interp-xt comp-xt "name" -- ) \ gforth
-    Header reveal
-    ['] on vtcopy \ vtable template from normal colon definition
-    ['] i/c>int  set->int   \ special name>interpret method
-    ['] i/c>comp set->comp  \ special name>compile method
-    swap , , ;
+: i/c>comp ( nt -- xt1 xt2 )
+    >body cell+ @ ['] execute ;
 
 \ \ Search list handling: reveal words, recursive		23feb93py
 
 : last?   ( -- false / nfa nfa )
     latest ?dup ;
 
-Variable warnings ( -- addr ) \ gforth
-\G set warnings level to
-\G @table @code
-\G @item 0
-\G turns warnings off
-\G @item -1
-\G turns normal warnings on
-\G @item -2
-\G turns beginner warnngs on
-\G @item -3
-\G pedantic warnings on
-\G @item -4
-\G turns warnings into errors (including beginner warnings)
-\G @end table
-G -2 warnings T ! \ default to -Won
-
-: (reveal) ( nt wid -- )
+: (nocheck-reveal) ( nt wid -- )
     wordlist-id dup >r
     @ over >link ! 
     r> ! ;
+: (reveal) ( nt wid -- )
+    over name>string 2 pick check-shadow
+    (nocheck-reveal) ;
 
 \ make entry in wordlist-map
 ' (reveal) f83search reveal-method !

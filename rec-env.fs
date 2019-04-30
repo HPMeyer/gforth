@@ -1,6 +1,6 @@
 \ env variable recognizer
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -19,10 +19,13 @@
 
 : env$, ( addr u -- )  slit, postpone getenv ;
 
-' getenv ' env$, ' slit, recognizer r:env
+' getenv ' env$, ' slit, rectype: rectype-env
 
-: rec:env ( addr u -- addr u r:env | r:fail )
-    over c@ '$' <> IF  2drop  r:fail  EXIT  THEN
-    1 /string r:env ;
+: rec-env ( addr u -- addr u rectype-env | rectype-null )
+    \G words prefixed with @code{'$'} are passed to @code{getenv}
+    \G to get the environment variable as string.
+    \G Example: @code{$HOME} gives the home directory
+    over c@ '$' <> IF  2drop  rectype-null  EXIT  THEN
+    1 /string rectype-env ;
 
-' rec:env get-recognizers 1+ set-recognizers
+' rec-env forth-recognizer >back

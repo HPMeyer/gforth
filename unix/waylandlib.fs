@@ -1,6 +1,6 @@
 \ wrapper to load Swig-generated libraries
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,17 +17,43 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-Voctable wayland \ needs to be case sensitive
+cs-vocabulary wayland \ needs to be case sensitive
 get-current also wayland definitions
 
 c-library waylandlib
-    \c #include <wayland/wayland-client.h>
-    \c #include <wayland/wayland-egl.h>
+    \c #include <wayland-egl.h>
+    \c #include <wayland-cursor.h>
     s" wayland-egl" add-lib
     s" wayland-client" add-lib
+    s" wayland-cursor" add-lib
     s" n" vararg$ $!
     
     include unix/wayland.fs
+
+    \ default interfaces
+    c-value wl_display_interface &wl_display_interface -- a
+    c-value wl_registry_interface &wl_registry_interface -- a
+    c-value wl_callback_interface &wl_callback_interface -- a
+    c-value wl_compositor_interface &wl_compositor_interface -- a
+    c-value wl_shm_pool_interface &wl_shm_pool_interface -- a
+    c-value wl_shm_interface &wl_shm_interface -- a
+    c-value wl_buffer_interface &wl_buffer_interface -- a
+    c-value wl_data_offer_interface &wl_data_offer_interface -- a
+    c-value wl_data_source_interface &wl_data_source_interface -- a
+    c-value wl_data_device_interface &wl_data_device_interface -- a
+    c-value wl_data_device_manager_interface &wl_data_device_manager_interface -- a
+    c-value wl_shell_interface &wl_shell_interface -- a
+    c-value wl_shell_surface_interface &wl_shell_surface_interface -- a
+    c-value wl_surface_interface &wl_surface_interface -- a
+    c-value wl_seat_interface &wl_seat_interface -- a
+    c-value wl_pointer_interface &wl_pointer_interface -- a
+    c-value wl_keyboard_interface &wl_keyboard_interface -- a
+    c-value wl_touch_interface &wl_touch_interface -- a
+    c-value wl_output_interface &wl_output_interface -- a
+    c-value wl_region_interface &wl_region_interface -- a
+    c-value wl_subcompositor_interface &wl_subcompositor_interface -- a
+    c-value wl_subsurface_interface &wl_subsurface_interface -- a
+
 end-c-library
 
 previous set-current

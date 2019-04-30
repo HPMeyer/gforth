@@ -1,6 +1,6 @@
 /* signal handling
 
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -220,7 +220,9 @@ static void segv_handler(int sig, siginfo_t *info, void *_)
   SIGPP(sig);
   debugp(stderr,"\nsegv_handler %d %p %p @%p\n", sig, info, _, addr);
 
-  if (JUSTUNDER(addr, NEXTPAGE3(gforth_UP)))
+  if ((UCell)(addr - dictguard) < pagesize)
+    code=-8;
+  else if (JUSTUNDER(addr, NEXTPAGE3(gforth_UP)))
     code=-3;
   else if (JUSTOVER(addr, NEXTPAGE(gforth_UP->sp0)))
     code=-4;
@@ -232,6 +234,10 @@ static void segv_handler(int sig, siginfo_t *info, void *_)
     code=-44;
   else if (JUSTOVER(addr, NEXTPAGE(gforth_UP->fp0)))
     code=-45;
+  else if (JUSTUNDER(addr, NEXTPAGE2(gforth_UP->fp0)))
+    code=-2058;
+  else if (JUSTOVER(addr, NEXTPAGE(gforth_UP->lp0)))
+    code=-2059;
   throw(code);
 }
 

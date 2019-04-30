@@ -1,6 +1,6 @@
 \ Load in error strings
 
-\ Copyright (C) 1995,1996,1997,1998,1999,2003,2007,2013,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,1999,2003,2007,2013,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -116,8 +116,13 @@ decimal
 -2053 s" Can't tick literal" rot errstring
 -2054 s" Warning treated as error" rot errstring
 -2055 s" Can't defer@ from this xt" rot errstring
+-2056 s" Can't ADDR on locals/uvalues" rot errstring
+-2057 s" wrong file type" rot errstring
+-2058 s" locals stack overflow" rot errstring
+-2059 s" locals stack underflow" rot errstring
+-2060 s" Bug in Gforth, please report" rot errstring
 
-variable next-exception -2056 next-exception !
+variable next-exception -2061 next-exception !
 
 : exception ( addr u -- n ) \ exception- gforth
     \G @var{n} is a previously unused @code{throw} value in the range
@@ -132,3 +137,7 @@ variable next-exception -2056 next-exception !
 \G the error number for a broken pipe
 
 -2054 constant warning-error ( -- n )
+
+: never-happens ( -- )
+    \ you can use this when you have to provide an xt that is never reached
+    -2060 throw ;

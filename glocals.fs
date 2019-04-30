@@ -1,6 +1,6 @@
 \ A powerful locals implementation
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2007,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2007,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -83,6 +83,7 @@
 require search.fs
 require float.fs
 require extend.fs \ for case
+require compat/caseext.fs
 
 User locals-size \ this is the current size of the locals stack
 		 \ frame of the current word
@@ -117,13 +118,6 @@ User locals-size \ this is the current size of the locals stack
 : adjust-locals-size ( n -- ) \ gforth
     \g sets locals-size to n and generates an appropriate lp+!
     locals-size @ swap - compile-lp+! ;
-
-\ : >docolloc ( -- )
-\    \g turn colon definition into lp restoring trampoline
-\    latestxt @ docol: <> ?EXIT \ !! delete this
-\    docolloc: latestxt code-address!
-\    ['] :loc, set-optimizer
-\    1 unlocal-state cset ;
 
 \ change EXIT's compilation action
 \ beware: because we need EXIT at the end of the definition, it can't
@@ -177,14 +171,32 @@ variable locals-mem-list \ linked list of all locals name memory in
 \ righmost local; the names are already created earlier, the
 \ compile-pushlocal just inserts the offsets from the frame base.
 
-Variable val-part
+Variable val-part \ contains true before |, false afterwards
+
+: locals, ( addr size -- )
+    dup locals-size ! swap ! ;
 
 : compile-pushlocal-w ( a-addr -- ) ( run-time: w -- )
 \ compiles a push of a local variable, and adjusts locals-size
 \ stores the offset of the local variable to a-addr
-    locals-size @ alignlp-w cell+ dup locals-size !
-    swap !
+    locals-size @ alignlp-w cell+ locals,
     val-part @ IF  postpone false  THEN  postpone >l ;
+
+: compile-pushlocal-f ( a-addr -- ) ( run-time: f -- )
+    locals-size @ alignlp-f float+ locals,
+    val-part @ IF  postpone 0e  THEN  postpone f>l ;
+
+: 2>l swap >l >l ;
+opt: drop postpone swap postpone >l postpone >l ;
+
+: compile-pushlocal-d ( a-addr -- ) ( run-time: w1 w2 -- )
+    locals-size @ alignlp-w cell+ cell+ locals,
+    val-part @ IF  postpone #0.  THEN  postpone 2>l ;
+
+: compile-pushlocal-c ( a-addr -- ) ( run-time: w -- )
+    -1 chars compile-lp+!
+    locals-size @ swap !
+    val-part @ IF  postpone false  THEN  postpone lp@ postpone c! ;
 
 \ locals list operations
 
@@ -220,35 +232,6 @@ Variable val-part
     \ true iff list1 is a sublist of list2
     over list-length over list-length swap - 0 max /list = ;
 
-\ : ocommon-list ( list1 list2 -- list3 ) \ gforth-internal
-\ \ list1 and list2 are lists, where the heads are at higher addresses than
-\ \ the tail. list3 is the largest sublist of both lists.
-\  begin
-\    2dup u<>
-\  while
-\    2dup u>
-\    if
-\      swap
-\    then
-\    @
-\  repeat
-\  drop ;
-
-\ : osub-list? ( list1 list2 -- f ) \ gforth-internal
-\ \ true iff list1 is a sublist of list2
-\  begin
-\    2dup u<
-\  while
-\    @
-\  repeat
-\  = ;
-
-\ defer common-list
-\ defer sub-list?
-
-\ ' ocommon-list is common-list
-\ ' osub-list?   is sub-list?
-
 : list-size ( list -- u ) \ gforth-internal
     \ size of the locals frame represented by list
     0 ( list n )
@@ -261,8 +244,11 @@ Variable val-part
     repeat
     faligned nip ;
 
+Defer locals-list!
+:noname locals-list ! ; is locals-list!
+
 : set-locals-size-list ( list -- )
-    dup locals-list !
+    dup locals-list!
     list-size locals-size ! ;
 
 : check-begin ( list -- )
@@ -272,21 +258,6 @@ Variable val-part
      >stderr ." compiler was overly optimistic about locals at a BEGIN" cr
    \ !! print assumption and reality
  then ;
-
-: compile-pushlocal-f ( a-addr -- ) ( run-time: f -- )
-    locals-size @ alignlp-f float+ dup locals-size !
-    swap !
-    val-part @ IF  postpone 0e  THEN  postpone f>l ;
-
-: compile-pushlocal-d ( a-addr -- ) ( run-time: w1 w2 -- )
-    locals-size @ alignlp-w cell+ cell+ dup locals-size !
-    swap !
-    val-part @ IF  postpone 0.  THEN  postpone swap postpone >l postpone >l ;
-
-: compile-pushlocal-c ( a-addr -- ) ( run-time: w -- )
-    -1 chars compile-lp+!
-    locals-size @ swap !
-    val-part @ IF  postpone false  THEN  postpone lp@ postpone c! ;
 
 (field) locals-name-size+ 10 cells , \ fields + wiggle room, name size must be added
 
@@ -322,8 +293,8 @@ defer dict-execute ( ... addr1 addr2 xt -- ... )
 : create-local ( "name" -- a-addr )
     \ defines the local "name"; the offset of the local shall be
     \ stored in a-addr
-    nextname-string 2@ dup 0= IF
-	2drop >in @ >r parse-name r> >in !  THEN  nip
+    nextname-string 2@ 2dup d0= IF
+	2drop parse-name nextname nextname-string 2@  THEN  nip
     dfaligned locals-name-size+ >r
     r@ allocate throw
     dup locals-mem-list prepend-list
@@ -341,71 +312,84 @@ variable locals-dp \ so here's the special dp for locals.
 \ adds it as inline argument to a preceding locals primitive
   lp-offset , ;
 
-[IFDEF] set-to
-    : to-w: ( -- )  -14 throw ;
-    comp: drop POSTPONE laddr# >body @ lp-offset, POSTPONE ! ;
-    : to-d: ( -- ) -14 throw ;
-    comp: drop POSTPONE laddr# >body @ lp-offset, POSTPONE 2! ;
-    : to-c: ( -- ) -14 throw ;
-    comp: drop POSTPONE laddr# >body @ lp-offset, POSTPONE c! ;
-    : to-f: ( -- ) -14 throw ;
-    comp: drop POSTPONE laddr# >body @ lp-offset, POSTPONE f! ;
-[THEN]
+: c+! ( c addr -- ) dup >r c@ + r> c! ;
+: 2+! ( d addr -- ) dup >r 2@ d+ r> 2! ;
+
+Create 2!-table ' 2! , ' 2+! ,
+Create c!-table ' c! , ' c+! ,
+to: to-w: ( -- ) -14 throw ;
+to-opt: ( !!?addr!! ) POSTPONE laddr# >body @ lp-offset, !-table to-!, ;
+to: to-d: ( -- ) -14 throw ;
+to-opt: ( !!?addr!! ) POSTPONE laddr# >body @ lp-offset, 2!-table to-!, ;
+to: to-c: ( -- ) -14 throw ;
+to-opt: ( !!?addr!! ) POSTPONE laddr# >body @ lp-offset, c!-table to-!, ;
+to: to-f: ( -- ) -14 throw ;
+to-opt: ( !!?addr!! ) POSTPONE laddr# >body @ lp-offset, f!-table to-!, ;
+
+defer@: defer@-xt: ( -- ) -14 throw ;
+defer@-opt: ( xt -- ) POSTPONE laddr# >body @ lp-offset, postpone @ ;
 
 : val-part-off ( -- ) val-part off ;
 
 vocabulary locals-types \ this contains all the type specifyers, -- and }
 locals-types definitions
 
-: W: ( "name" -- a-addr xt ) \ gforth w-colon
-    create-local [IFDEF] set-to ['] to-w: set-to [THEN]
+: W: ( "name" -- a-addr u ) \ gforth w-colon
+    create-local ['] to-w: set-to
     \ xt produces the appropriate locals pushing code when executed
     ['] compile-pushlocal-w
   does> ( Compilation: -- ) ( Run-time: -- w )
     \ compiles a local variable access
     @ lp-offset compile-@local ;
 
-: W^ ( "name" -- a-addr xt ) \ gforth w-caret
+: W^ ( "name" -- a-addr u ) \ gforth w-caret
     create-local
     ['] compile-pushlocal-w
   does> ( Compilation: -- ) ( Run-time: -- w )
     postpone laddr# @ lp-offset, ;
 
-: F: ( "name" -- a-addr xt ) \ gforth f-colon
-    create-local [IFDEF] set-to ['] to-f: set-to [THEN]
+: F: ( "name" -- a-addr u ) \ gforth f-colon
+    create-local ['] to-f: set-to
     ['] compile-pushlocal-f
   does> ( Compilation: -- ) ( Run-time: -- w )
     @ lp-offset compile-f@local ;
 
-: F^ ( "name" -- a-addr xt ) \ gforth f-caret
+: F^ ( "name" -- a-addr u ) \ gforth f-caret
     create-local
     ['] compile-pushlocal-f
   does> ( Compilation: -- ) ( Run-time: -- w )
     postpone laddr# @ lp-offset, ;
 
-: D: ( "name" -- a-addr xt ) \ gforth d-colon
-    create-local [IFDEF] set-to ['] to-d: set-to [THEN]
+: D: ( "name" -- a-addr u ) \ gforth d-colon
+    create-local ['] to-d: set-to
     ['] compile-pushlocal-d
   does> ( Compilation: -- ) ( Run-time: -- w )
     postpone laddr# @ lp-offset, postpone 2@ ;
 
-: D^ ( "name" -- a-addr xt ) \ gforth d-caret
+: D^ ( "name" -- a-addr u ) \ gforth d-caret
     create-local
     ['] compile-pushlocal-d
   does> ( Compilation: -- ) ( Run-time: -- w )
     postpone laddr# @ lp-offset, ;
 
-: C: ( "name" -- a-addr xt ) \ gforth c-colon
-    create-local [IFDEF] set-to ['] to-c: set-to [THEN]
+: C: ( "name" -- a-addr u ) \ gforth c-colon
+    create-local ['] to-c: set-to
     ['] compile-pushlocal-c
   does> ( Compilation: -- ) ( Run-time: -- w )
     postpone laddr# @ lp-offset, postpone c@ ;
 
-: C^ ( "name" -- a-addr xt ) \ gforth c-caret
+: C^ ( "name" -- a-addr u ) \ gforth c-caret
     create-local
     ['] compile-pushlocal-c
   does> ( Compilation: -- ) ( Run-time: -- w )
     postpone laddr# @ lp-offset, ;
+
+: XT: ( "name" -- a-addr u ) \ gforth w-colon
+    create-local  ['] to-w: set-to  ['] defer@-xt: set-defer@
+    ['] compile-pushlocal-w
+  does> ( Compilation: -- ) ( Run-time: .. -- .. )
+    \ compiles a local variable access
+    @ lp-offset compile-@local postpone execute ;
 
 : | val-part on ['] val-part-off ;
 
@@ -434,6 +418,7 @@ c: some-clocal 2drop
 d: some-dlocal 2drop
 f: some-flocal 2drop
 w: some-wlocal 2drop
+xt: some-xtlocal 2drop
 
 \ these "locals" create the associated vts
 c^ some-caddr 2drop
@@ -455,7 +440,7 @@ w^ some-waddr 2drop
 \ the returned nfa denotes a word that produces what W: produces
 \ !! do the whole thing without nextname
     drop nextname
-    ['] W: >head-noprim ;
+    ['] W: ;
 
 previous
 
@@ -470,12 +455,6 @@ create new-locals-map ( -- wordlist-map )
 
 new-locals-map mappedwordlist Constant new-locals-wl
 
-\ slowvoc @
-\ slowvoc on
-\ vocabulary new-locals
-\ slowvoc !
-\ new-locals-map ' new-locals >body wordlist-map A! \ !! use special access words
-
 \ and now, finally, the user interface words
 : { ( -- vtaddr u latest latestxt wid 0 ) \ gforth open-brace
     ( >docolloc ) vtsave \ as locals will mess with their own vttemplate
@@ -486,11 +465,13 @@ new-locals-map mappedwordlist Constant new-locals-wl
     0 TO locals-wordlist
     0 postpone [ ; immediate
 
-synonym {: {
+synonym {: { ( -- vtaddr u latest latestxt wid 0 ) \ forth-2012 open-brace-colon
+\G Start standard locals declaration.  All Gforth locals extensions are
+\G supported by Gforth, though the standard only supports the subset of cells.
 
 locals-types definitions
 
-: } ( vtaddr u latest latestxt wid 0 a-addr1 xt1 ... -- ) \ gforth close-brace
+: } ( vtaddr u latest latestxt wid 0 a-addr1 u1 ... -- ) \ gforth close-brace
     \ ends locals definitions
     ]
     begin
@@ -621,7 +602,7 @@ defer adjust-locals-list ( wid -- )
 :noname ( wid -- )
     locals-list @ common-list
     dup list-size adjust-locals-size
-    locals-list ! ;
+    locals-list! ;
 is adjust-locals-list
 
 \ adapt the hooks
@@ -632,7 +613,7 @@ is adjust-locals-list
     latest latestxt
     clear-leave-stack
     0 locals-size !
-    0 locals-list !
+    0 locals-list!
     dead-code off
     defstart ;
 
@@ -804,43 +785,6 @@ colon-sys-xt-offset 3 + to colon-sys-xt-offset
 	code-address!
     then ;
 
-[IFUNDEF] set-to
-    : (int-to) ( xt -- )
-	dup >definer
-	case
-	    [ ' locals-wordlist ] literal >definer \ value
-	    of  >body ! endof
-	    [ ' parse-name ] literal >definer \ defer
-	    of  defer! endof
-	    -&32 throw
-	endcase ;
-
-    : (comp-to) ( xt -- )
-	dup >definer
-	case
-	    [ ' locals-wordlist ] literal >definer \ value
-	    OF >body POSTPONE Aliteral POSTPONE ! ENDOF
-	    [ ' parse-name ] literal >definer \ defer
-	    OF POSTPONE Aliteral POSTPONE defer! ENDOF
-	    \ !! dependent on c: etc. being does>-defining words
-	    \ this works, because >definer uses >does-code in this case,
-	    \ which produces a relocatable address
-	    [ comp' some-clocal drop ] literal >definer
-	    OF POSTPONE laddr# >body @ lp-offset, POSTPONE c! ENDOF
-	    [ comp' some-wlocal drop ] literal >definer
-	    OF POSTPONE laddr# >body @ lp-offset, POSTPONE ! ENDOF
-	    [ comp' some-dlocal drop ] literal >definer
-	    OF POSTPONE laddr# >body @ lp-offset, POSTPONE 2! ENDOF
-	    [ comp' some-flocal drop ] literal >definer
-	    OF POSTPONE laddr# >body @ lp-offset, POSTPONE f! ENDOF
-	    -&32 throw
-	endcase ;
-    
-    : TO ( c|w|d|r "name" -- ) \ core-ext,local
-	' (int-to) ;
-    comp: drop comp' drop (comp-to) ;
-[THEN]
-
 : locals| ( ... "name ..." -- ) \ local-ext locals-bar
     \ don't use 'locals|'! use '{'! A portable and free '{'
     \ implementation is compat/anslocals.fs
@@ -850,3 +794,45 @@ colon-sys-xt-offset 3 + to colon-sys-xt-offset
 	(local)
     REPEAT
     drop 0 (local) ; immediate restrict
+
+
+\ POSTPONEing locals
+
+: xtlocal-postpone ( nt -- )
+    \ this is used in the postpone slot, but it does everything
+    >body @ lp-offset compile-@local postpone compile, ;
+
+' noop alias nocomp ( -- ) \ gforth
+\G like @code{noop}, but compiles to nothing
+opt: drop ;
+
+\ these rectypes are only used for POSTPONEing
+' never-happens '  literal ' name-compsem rectype: post-wlocal
+' never-happens ' 2literal ' name-compsem rectype: post-dlocal
+' never-happens ' fliteral ' name-compsem rectype: post-flocal
+' never-happens ' nocomp ' xtlocal-postpone rectype: post-xtlocal
+
+warnings @ warnings off \ disable all those compile-only warnings
+: >postpone-replacer-locals ( ... rectype1 -- ... rectype2 )
+    \ Input: any recognizer result; if it is for a local, produce
+    \ correct behaviour for read-only locals.  This is wrong for
+    \ read/write locals, but it's better than what we get without this
+    \ replacer.
+    dup rectype-name = if
+        over name>int >does-code case
+            0 of endof
+            [ ' some-clocal  >does-code ] literal of drop post-wlocal endof
+            [ ' some-dlocal  >does-code ] literal of drop post-dlocal endof
+            [ ' some-flocal  >does-code ] literal of drop post-flocal endof
+            [ ' some-wlocal  >does-code ] literal of drop post-wlocal endof
+            [ ' some-xtlocal >does-code ] literal of drop post-xtlocal endof
+            [ ' some-caddr   >does-code ] literal of drop post-wlocal endof
+            [ ' some-daddr   >does-code ] literal of drop post-wlocal endof
+            [ ' some-faddr   >does-code ] literal of drop post-wlocal endof
+            [ ' some-waddr   >does-code ] literal of drop post-wlocal endof
+        endcase
+    then
+    defers >postpone-replacer ;
+warnings !
+
+' >postpone-replacer-locals is >postpone-replacer

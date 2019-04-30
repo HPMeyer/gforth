@@ -1,6 +1,6 @@
 \ wrap TYPE and EMIT into strings using string.fs
 \
-\ Copyright (C) 2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2013,2014,2015,2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,6 +17,8 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
+require glocals.fs
+
 \ overwrite
 
 : $over ( addr u $addr off -- )
@@ -30,18 +32,6 @@
     r> $@ rot /string rot umin move ;
 
 \ string array words
-
-: $[] ( n addr -- addr' )
-    \G index into the string array and return the address at index n
-    \G The array will be resized as needed
-    >r
-    r@ @ 0= IF  s" " r@ $!  THEN
-    BEGIN  r@ $@ 2 pick cells /string
-	dup cell < WHILE \ this will be satisfied next round
-	2drop r@ $@len
-	over 1+ cells r@ $!len
-	r@ $@ rot /string 0 fill
-    REPEAT  drop nip rdrop ;
 
 : $[]! ( addr u n $[]addr -- )  $[] $! ;
 \G store a string into an array at index @i{n}
@@ -101,8 +91,7 @@ tmp$ $execstr-ptr !
 : $+slurp ( fid addr -- )
     \G slurp a file @var{fid} into a string @var{addr2}, append mode
     swap >r r@ file-size throw drop
-    over $@len dup >r + over $!len
-    $@ r> /string r> read-file throw drop ;
+    dup rot $+!len swap r> read-file throw drop ;
 : $slurp ( fid addr -- )
     \G slurp a file @var{fid} into a string @var{addr2}
     dup $free $+slurp ;
@@ -115,15 +104,17 @@ tmp$ $execstr-ptr !
 
 : $slurp-line { fid addr -- flag }  addr $free
     BEGIN
-	addr $@len dup { sk } 2* $100 umax dup { sz } addr $!len
-	addr $@ sk /string fid read-line throw
-	swap dup sz = WHILE  2drop  REPEAT  sk + addr $!len ;
+	addr $@len dup { sk } $100 umax dup >r addr $+!len
+	r@ fid read-line throw
+	swap dup r> = WHILE  2drop  REPEAT  sk + addr $!len ;
 : $[]slurp { fid addr -- }
     \G slurp a file @var{fid} line by line into a string array @var{addr}
-    0 { i }  BEGIN  fid i addr $[] $slurp-line  WHILE
-	    i 1+ to i   REPEAT
+    0 { ii }  BEGIN  fid ii addr $[] $slurp-line  WHILE
+	    ii 1+ to ii   REPEAT
     \ we need to take off the last line, though, if it is empty
-    i addr $[]@ nip 0= IF  i addr $[] $free  i cells addr $!len  THEN ;
+    ii addr $[]@ nip IF  ii 1+ to ii  THEN
+    addr $[]# ii U+DO  I addr $[] $free  LOOP
+    ii cells addr $!len ;
 : $[]slurp-file ( addr u $addr -- )
     \G slurp a named file @var{addr u} line by line into a string array @var{$addr}
     >r r/o open-file throw dup r> $[]slurp close-file throw ;

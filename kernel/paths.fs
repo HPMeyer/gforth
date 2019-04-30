@@ -1,6 +1,6 @@
 \ paths.fs path file handling                                    03may97jaw
 
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2010,2013,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2010,2013,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -67,22 +67,20 @@ User tfile
     fpath off
     ofile off
     tfile off
-    pathstring 2@ fpath only-path 
-    init-included-files ;
+    pathstring 2@ fpath only-path ;
 
 \ The path Gforth uses for @code{included} and friends.
 
 : also-path ( c-addr len path-addr -- ) \ gforth
     \G add the directory @i{c-addr len} to @i{path-addr}.
-    >r
-    r@ $@len IF  \ add separator if necessary
-	s" |" r@ $+!  0 r@ $@ + 1- c!
+    dup $@len IF  \ add separator if necessary
+	0 over c$+!
     THEN
-    r> $+! ;
+    $+! ;
 
 : clear-path ( path-addr -- ) \ gforth
     \G Set the path @i{path-addr} to empty.
-    s" " rot $! ;
+    $init ;
 
 : only-path ( adr len path -- )
     dup clear-path also-path ;
@@ -95,10 +93,12 @@ User tfile
     \G Add directory @var{dir} to the Forth search path.
     fpath path+ ;
 
+: substc ( addr u charold charnew -- addr u )
+    2over bounds ?DO over i c@ = IF dup i c! THEN LOOP  2drop ;
+
 : path= ( path-addr "dir1|dir2|dir3" ) \ gforth
     \G Make a complete new search path; the path separator is |.
-    name 2dup bounds ?DO i c@ '| = IF 0 i c! THEN LOOP
-    rot only-path ;
+    parse-name '|' 0 substc rot only-path ;
 
 : fpath= ( "dir1|dir2|dir3" ) \ gforth
     \G Make a complete new Forth search path; the path separator is |.
@@ -126,7 +126,7 @@ User tfile
     \G or if it is in the form ./*, extended regexp: ^[/~]|./, or if
     \G it has a colon as second character ("C:...").  Paths simply
     \G containing a / are not absolute!
-    2dup 2 u> swap 1+ c@ ': = and >r \ dos absoulte: c:/....
+    2dup 2 u> swap 1+ c@ ':' = and >r \ dos absoulte: c:/....
     over c@ '/ = >r
     over c@ '~ = >r
     \ 2dup S" ../" string-prefix? r> or >r \ not catered for in expandtopic

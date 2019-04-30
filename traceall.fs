@@ -1,6 +1,6 @@
 \ replacement for name
 
-\ Copyright (C) 1999,2000,2003,2007,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1999,2000,2003,2007,2015,2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,9 +17,9 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-: rec:trace
-    [: drop >r .s ." | " r> source + over - type cr ;] do-debug r:fail ;
+: rec-trace
+    [: drop >r .s ." | " r> source + over - type cr ;] do-debug rectype-null ;
 
-: traceall  get-recognizers ['] rec:trace swap 1+ set-recognizers ;
-: notrace   get-recognizers over ['] rec:trace = IF  nip 1-  THEN
+: traceall  get-recognizers ['] rec-trace swap 1+ set-recognizers ;
+: notrace   get-recognizers over ['] rec-trace = IF  nip 1-  THEN
     set-recognizers ;

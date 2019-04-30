@@ -1,7 +1,7 @@
 /*
   This is the machine-specific part for Intel 386 compatible processors
 
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2012,2013,2014,2016 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2012,2013,2014,2016,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -45,10 +45,13 @@
 #define ASM_UM_SLASH_MOD(d1lo, d1hi, n1, n2, n3) \
 	asm("divl %4": "=a"(n3),"=d"(n2) : "a"(d1lo),"d"(d1hi),"g"(n1):"cc");
 
+#include "../generic/machine.h"
 /* 386 and below have no cache, 486 has a shared cache, and the
    Pentium and later employ hardware cache consistency, so
    flush-icache is a noop */
-#define FLUSH_ICACHE(addr,size)
+#ifndef FLUSH_ICACHE
+# define FLUSH_ICACHE(addr,size)
+#endif
 
 /* code padding */
 #define CODE_ALIGNMENT 16
@@ -142,5 +145,3 @@
 #define CLOBBER_TOS_WORKAROUND_START sp[0]=spTOS; __asm__ __volatile__ ("" ::: "memory");
 #define CLOBBER_TOS_WORKAROUND_END   __asm__ __volatile__ ("" ::: "memory"); spTOS=sp[0];
 #endif
-
-#include "../generic/machine.h"

@@ -1,6 +1,6 @@
 \ VT100.STR     VT100 excape sequences                  20may93jaw
 
-\ Copyright (C) 1995,1999,2000,2003,2007,2012,2013,2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1999,2000,2003,2007,2012,2013,2014,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -40,7 +40,7 @@ decimal
     \G position the cursor relative to the current cursor position
     \G by adding @var{x} to the column and @var{y} to the row, negative
     \G numbers move up and left, positive down and right.
-    over 0< over 0= and IF  drop abs backspaces  EXIT  THEN
+    \ over 0< over 0= and IF  drop abs backspaces  EXIT  THEN
     [: <<#
       ?dup-IF
 	  dup 0< IF  'A'  ELSE  'B'  THEN  hold abs 0 #s 2drop #esc[

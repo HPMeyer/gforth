@@ -1,6 +1,6 @@
 \ process options in an extensible way
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -46,8 +46,10 @@ options also definitions
 previous forth definitions
 
 : process-voc-option ( addr u -- true / addr u false )
-    2dup [ ' options >body ] Literal search-wordlist
-    IF    nip nip execute true
-    ELSE  false  THEN ;
+    2dup [ ' options >body ] Literal find-name-in dup if
+	nip nip name>int execute true then ;
+
+
+
 
 ' process-voc-option is process-option

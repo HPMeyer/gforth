@@ -1,6 +1,6 @@
 \ assertions
 
-\ Copyright (C) 1995,1996,1997,1999,2002,2003,2007,2010,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1999,2002,2003,2007,2010,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -23,11 +23,11 @@ variable assert-level ( -- a-addr ) \ gforth
 \G All assertions above this level are turned off.
 1 assert-level !
 
-: (end-assert) ( flag xpos -- ) \ gforth-internal
+: (end-assert) ( flag view -- ) \ gforth-internal
     swap if
 	drop
     else
-	.sourcepos1 ." : failed assertion"
+	.sourceview ." : failed assertion"
 	true abort" assertion failed" \ !! or use a new throw code?
     then ;
 
@@ -69,20 +69,15 @@ variable assert-level ( -- a-addr ) \ gforth
 
 \ conditionally executed debug code, not necessarily assertions
 
-: debug-does>  DOES>  @
-    IF ['] noop assert-canary  ELSE  postpone (  THEN ;
+: debug-does>  DOES>
+    ]] Literal @ IF [[ [: postpone THEN ;] assert-canary ;
 : debug: ( -- )
-    Create false , debug-does>
-comp:  >body
-    ]] Literal @ IF [[ [: ]] THEN [[ ;] assert-canary ;
-: )else( ( --)
-    ]] ) ( [[ ; \ )
-comp: drop 2>r ]] ELSE [[ 2r> ;
-: else( ['] noop assert-canary ; immediate
+    Create false , immediate debug-does> ;
+: )else( ( -- ) 2>r postpone ELSE 2r> ; immediate compile-only
 
-: +db ( "word" -- ) ' >body on ;
-: -db ( "word" -- ) ' >body off ;
-: ~db ( "word" -- ) ' >body dup @ 0= swap ! ;
+: +db ( "word" -- ) (') >body on ;
+: -db ( "word" -- ) (') >body off ;
+: ~db ( "word" -- ) (') >body dup @ 0= swap ! ;
 
 Variable debug-eval
 
@@ -126,7 +121,7 @@ Variable timer-list
 
 : .times ( -- )
     [: dup body> >name name>string 1 /string
-	tuck type 8 swap - 0 max spaces ." : "
+	tuck type 8 swap - spaces ." : "
 	2@ d>f 1n f* f. cr ;] map-timer ;
 
 : !time ( -- ) ntime timer-tick 2! ;
@@ -138,3 +133,10 @@ Variable timer-list
     f>s 3 .r ." ns " ;
 : .time ( -- )
     @time (.time) ;
+
+: !@time ( -- delta-f ) ntime timer-tick 2@ 2over timer-tick 2! d- d>f 1n f* ;
+: .!time ( -- ) !@time (.time) ;
+
+\ words present in iforth and win32forth
+synonym timer-reset !time ( -- )
+synonym .elapsed .time ( -- )

@@ -1,6 +1,6 @@
 \ UTF-8 handling                                       12dec04py
 
-\ Copyright (C) 2004,2005,2006,2007,2008,2009,2010,2011,2013,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2004,2005,2006,2007,2008,2009,2010,2011,2013,2015,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -94,7 +94,7 @@ Defer check-xy  ' noop IS check-xy
 \ utf-8 stuff for xchars
 
 : +u8/string ( xc-addr1 u1 -- xc-addr2 u2 )
-    over dup u8>> swap - /string ;
+    over dup u8>> swap - safe/string ;
 : u8\string- ( xcaddr u -- xcaddr u' )
     over + u8<< over - ;
 
@@ -123,6 +123,7 @@ Defer check-xy  ' noop IS check-xy
     drop 8 ;
 
 : -u8trailing-garbage ( addr u1 -- addr u2 )
+    dup 0= ?EXIT
     2dup + dup u8<< ( addr u1 end1 end2 )
     2dup dup over over - u8addrlen + = if \ last character ok
 	2drop

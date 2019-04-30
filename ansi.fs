@@ -1,6 +1,6 @@
 \ ansi.fs      Define terminal attributes              20may93jaw
 
-\ Copyright (C) 1995,1996,1997,1998,2001,2003,2007,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2001,2003,2007,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -57,14 +57,18 @@ decimal
 2 CONSTANT Underline
 4 CONSTANT Blink
 8 CONSTANT Invers
+16 CONSTANT Strikethrough
+32 CONSTANT Italic
+64 Constant Invisible
+128 Constant Dim
 
 \ For portable programs don't use invers and underline
 
-: >BG    4 lshift ;
-: >FG    8 lshift ;
+: >BG    8 lshift ;
+: >FG    12 lshift ;
 
-: BG>    4 rshift 15 and ;
-: FG>    8 rshift 15 and ;
+: BG>    8 rshift 15 and ;
+: FG>    12 rshift 15 and ;
 
 : <A    -1 0 ;
 : A>    BEGIN over -1 <> WHILE or REPEAT nip ;
@@ -73,13 +77,18 @@ User Attr   0 Attr !
 
 : (Attr!) ( attr -- )
     \G set attribute
-    dup Attr @ = IF drop EXIT THEN
+    dup Attr @ = over 0= or IF drop EXIT THEN
+    dup $6600 = Attr @ 0= and IF drop EXIT THEN
     dup Attr !
     <<# 'm' hold
-    dup Invers and IF 7 #n; THEN
-    dup Blink and IF 5 #n; THEN
-    dup Underline and IF 4 #n; THEN
     dup Bold and IF 1 #n; THEN
+    dup Dim and IF 2 #n; THEN
+    dup Italic and IF 3 #n; THEN
+    dup Underline and IF 4 #n; THEN
+    dup Blink and IF 5 #n; THEN
+    dup Invers and IF 7 #n; THEN
+    dup Invisible and IF 8 #n; THEN
+    dup Strikethrough and IF 9 #n; THEN
     dup BG> ?dup IF $F xor 40 + #n; THEN
     dup FG> ?dup IF $F xor 30 + #n; THEN
     drop 0 #n #esc[ 0. #> type #>> ;
@@ -101,8 +110,67 @@ User Attr   0 Attr !
 
 Variable mark-attr
 : m>>> ( -- )
-    attr @ dup mark-attr ! Invers xor attr! ;
+    attr @ dup mark-attr !
+    dup Underline xor attr!
+    ." >>>" Invers xor attr! ;
 : <<<m ( -- )
-    mark-attr @ attr! ;
+    mark-attr @ dup Underline xor attr! ." <<<" attr! ;
 ' m>>> is mark-start
 ' <<<m is mark-end
+
+\ check what color our terminal has
+
+$Variable term-rgb$
+
+: is-terminal? ( -- f )
+    stdin isatty  stdin isfg and  stdout isatty and ;
+
+: is-color-terminal? ( -- flag )
+    s" TERM" getenv
+    2dup s" xterm" search nip nip >r
+    2dup s" linux" search nip nip >r
+         s" rxvt"  search nip nip r> r> or or ;
+
+: is-xterm? ( -- f )
+    s" TERM" getenv
+    2dup s" xterm" string-prefix? >r
+         s" rxvt"  string-prefix? r> or \ rxvt behaves like xterm
+    \ OSX' terminal claims to be a full xterm-256color, but isn't
+    s" TERM_PROGRAM" getenv s" Apple_Terminal" str= 0= and
+    is-terminal? and ;
+
+: term-bg? ( -- rgb )
+    \G query terminal's background color, return value in hex RRGGBB
+    key? drop \ set terminal into raw mode
+    s\" \e]11;?\007" type \ avada kedavra, terminal!
+    100 0 ?DO  key? ?LEAVE  1 ms  LOOP \ wait a maximum of 100 ms
+    BEGIN  key?  WHILE  key #esc =  UNTIL  ELSE  0  EXIT  THEN
+    BEGIN  key?  WHILE  key term-rgb$ c$+!  REPEAT
+    term-rgb$ $@ ':' $split 2nip
+    '/' $split '/' $split
+    ['] s>number $10 base-execute drop >r
+    ['] s>number $10 base-execute drop >r
+    ['] s>number $10 base-execute drop
+    $FF00 and $8 lshift r> $FF00 and or r> $8 rshift or
+    term-rgb$ $free ;
+
+: rgb-split ( rgb -- r g b )
+    dup $FF and swap 8 rshift
+    dup $FF and swap 8 rshift
+    ( ) $FF and swap rot ;
+
+$0 Value default-bg
+
+: auto-color ( -- )
+    is-terminal? is-color-terminal? and 0= if
+        \ TODO: no terminal - switch to other output class
+	no-colors  EXIT
+    then
+    is-xterm? if term-bg? else default-bg then
+    rgb-split + + $17F u> IF
+	white-colors
+    ELSE
+	black-colors
+    THEN ;
+
+:noname auto-color defers 'cold ; is 'cold

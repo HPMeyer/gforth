@@ -1,6 +1,6 @@
 \ opengl example
 
-\ Copyright (C) 2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,16 +17,19 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-require minos2/gl-helper.fs
+require gl-helper.fs
 
 also opengl
 also [IFDEF] android android [THEN]
+also [IFDEF] jni jni [THEN]
 also [IFDEF] x11 x11 [THEN]
 
 tex: ascii-tex
 
 : load-textures ( -- )
-    ascii-tex s" ascii.png" load-texture wrap mipmap ;
+    ascii-tex s" ascii.png" load-texture 2drop ;
+
+:noname defers reload-textures load-textures ; is reload-textures
 
 \ triangle example
 
@@ -40,14 +43,14 @@ buffer-init
 \ 0 set-triangle
 
 : colors ( -- ) >v
-    $FF0000FF rgba>c v+
-    $00FF00FF rgba>c v+
-    $0000FFFF rgba>c v+ v> ;
+    red#   i>c v+
+    green# i>c v+
+    blue#  i>c v+ v> ;
 
 : colors' ( -- ) >v
-    $0000FFFF rgba>c v+
-    $FF0000FF rgba>c v+
-    $00FF00FF rgba>c v+ v> ;
+    blue#  i>c v+
+    red#   i>c v+
+    green# i>c v+ v> ;
 
 : texcoords >v
     2e0 0e0 >st v+
@@ -63,12 +66,12 @@ FVariable motion 0.01e motion f!
 
 : draw-tri-angle ( f -- )
     0.01e 0.02e 0.15e 1.0e glClearColor
-    clear
+    clear  program init
     Ambient 1 ambient% glUniform1fv
-    v0  set-triangle
+    vi0  set-triangle
     normals texcoords colors
     none-tex
-    i0  0 i, 1 i, 2 i,
+    0 i, 1 i, 2 i,
     GL_TRIANGLES draw-elements
     v0 colors'
     ascii-tex
@@ -80,12 +83,12 @@ FVariable motion 0.01e motion f!
     angle draw-tri-angle
     >looper default>ap
     *input >r r@ IF
-	r@ action @ abs 1 <> IF
+	r@ action @ abs 1 u> IF
 	    \ ." Touch at " r@ x0 ? r@ y0 ? cr
 	    \ r@ x0 @ 20 < r@ y0 @ 20 < and IF -1 (bye) THEN
 	    r@ x0 @ dpy-w @ 2/ - s>f dpy-h @ 2/ fm/
 	    r@ y0 @ dpy-h @ 2/ - s>f dpy-h @ 2/ fm/
-	    fover fover fnegate -1.15e lightpos glUniform3f
+	    fover fover fnegate 1.5e lightpos glUniform3f
 	    fatan2
 	    touch f@ -100e f= IF
 		angle f- touch f!
@@ -98,7 +101,7 @@ FVariable motion 0.01e motion f!
 		    ( .2e f* motion f@ .8e f* f+ ) motion f!  THEN
 		to angle
 	    THEN
-	    ambient% sf@ 0.05e f- 0.5e fmax ambient% sf!
+	    ambient% sf@ 0.05e f- 0.0e fmax ambient% sf!
 	ELSE
 	    ambient% sf@ 0.05e f+ 1.0e fmin ambient% sf!
 	    angle motion f@ f+ to angle
@@ -111,13 +114,16 @@ FVariable motion 0.01e motion f!
 
 : tri-loop ( -- ) 1 level# +! 0e  BEGIN draw-tri level# @ 0= UNTIL fdrop ;
 
-: gl-sample ( -- ) [IFDEF] hidekb  hidekb  config-change# need-config ! [THEN]
+: gl-sample ( -- )
+    [IFDEF] hidekb  hidekb  +config [THEN]
+    [IFDEF] map-win exposed @ 0= IF  map-win  THEN [THEN]
     ['] VertexShader ['] FragmentShader create-program to program
     program init load-textures .info
     tri-loop ;
 
-previous previous
+previous previous previous previous
 
 win 0= [IF] window-init [THEN]
 
 gl-sample
+script? [IF] bye [THEN]

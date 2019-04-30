@@ -1,6 +1,6 @@
 \ useful windows functions (kernel32 and imm32)
 
-\ Copyright (C) 2015 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,7 +17,7 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-Voctable win32
+cs-vocabulary win32
 get-current also win32 definitions
 
 c-library win32

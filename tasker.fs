@@ -1,6 +1,6 @@
 \ Multitasker                                          19aug94py
 
-\ Copyright (C) 1995,1996,1997,2001,2003,2007,2014,2015 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,2001,2003,2007,2014,2015,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -96,13 +96,13 @@ Create killer killer A, killer A,
     \G checks if only one task is running
     next-task dup @ = ;
 
-: task-key   BEGIN  pause key? single-tasking? or  UNTIL  (key) ;
+: task-key-ior   BEGIN  pause key? single-tasking? or  UNTIL  (key) ;
 : task-emit  (emit) pause ;
 : task-type  (type) pause ;
 : task-deadline ( d -- ) 
     BEGIN  pause 2dup ntime d- d0<=  UNTIL  2drop ;
 
-' task-key  IS key
+' task-key-ior IS key-ior
 ' task-emit IS emit
 ' task-type IS type
 ' task-deadline IS deadline

@@ -1,6 +1,6 @@
 \ Regexp compiler
 
-\ Copyright (C) 2005,2006,2007,2008,2010,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2005,2006,2007,2008,2010,2015,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -101,6 +101,8 @@ charclass any    0 $FF ..char #lf -char
 : ` ( "char" -- ) \ regexp-pattern
     \G check for particular char
     ]] count [[  char ]] Literal <> ?LEAVE [[ ;  immediate
+: `? ( "char" -- ) \ regexp-pattern
+    ]] count [[  char ]] Literal <> + [[ ; immediate
 : -` ( "char" -- ) \ regexp-pattern
     \G check for particular char
     ]] count [[  char ]] Literal = ?LEAVE [[ ;  immediate
@@ -117,8 +119,8 @@ Variable loops  $40 3 * cells allot
 
 \ variables
 
-Variable vars   &18 cells allot
-Variable varstack 9 cells allot
+Variable vars     #20 cells allot
+Variable varstack #10 cells allot
 Variable varsmax
 : >var ( -- addr )
     vars @+ swap 2* cells +

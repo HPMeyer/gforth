@@ -1,6 +1,6 @@
 \ test some gforth extension words
 
-\ Copyright (C) 2003,2004,2005,2006,2007,2009,2011,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2003,2004,2005,2006,2007,2009,2011,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -150,35 +150,35 @@ t{ 7 x1 -> 7 22 11 34 17 52 26 13 40 20 10 5 16 8 4 2 1 }t
 
 T{ 4 STACK constant RS -> }T
 
-T{ :noname 1 ;  :noname 2 ;  :noname 3  ; recognizer r:1 -> }T
-T{ :noname 10 ; :noname 20 ; :noname 30 ; recognizer r:2 -> }T
+T{ :noname 1 ;  :noname 2 ;  :noname 3  ; rectype: rectype-1 -> }T
+T{ :noname 10 ; :noname 20 ; :noname 30 ; rectype: rectype-2 -> }T
 
 \ really stupid: 1 character length or 2 characters
-T{ : rec:1 NIP 1 = IF r:1 ELSE R:FAIL THEN ; -> }T
-T{ : rec:2 NIP 2 = IF r:2 ELSE R:FAIL THEN ; -> }T
+T{ : rec-1 NIP 1 = IF rectype-1 ELSE RECTYPE-NULL THEN ; -> }T
+T{ : rec-2 NIP 2 = IF rectype-2 ELSE RECTYPE-NULL THEN ; -> }T
 
-T{ r:1 R>INT EXECUTE  -> 1 }T
-T{ r:1 R>COMP EXECUTE -> 2 }T
-T{ r:1 R>POST EXECUTE -> 3 }T
+T{ rectype-1 RECTYPE>INT EXECUTE  -> 1 }T
+T{ rectype-1 RECTYPE>COMP EXECUTE -> 2 }T
+T{ rectype-1 RECTYPE>POST EXECUTE -> 3 }T
 
 \ set and get methods
 T{ 0 RS SET-STACK -> }T
 T{ RS GET-STACK -> 0 }T
 
-T{ ' rec:1 1 RS SET-STACK -> }T
-T{ RS GET-STACK -> ' rec:1 1 }T
+T{ ' rec-1 1 RS SET-STACK -> }T
+T{ RS GET-STACK -> ' rec-1 1 }T
 
-T{ ' rec:1 ' rec:2 2 RS SET-STACK -> }T
-T{ RS GET-STACK -> ' rec:1 ' rec:2 2 }T
+T{ ' rec-1 ' rec-2 2 RS SET-STACK -> }T
+T{ RS GET-STACK -> ' rec-1 ' rec-2 2 }T
 
-\ testing MAP-RECOGNIZERS
+\ testing RECOGNIZE
 T{         0 RS SET-STACK -> }T
-T{ S" 1"     RS MAP-RECOGNIZER   -> R:FAIL }T
-T{ ' rec:1 1 RS SET-STACK -> }T
-T{ S" 1"     RS MAP-RECOGNIZER   -> R:1 }T
-T{ S" 10"    RS MAP-RECOGNIZER   -> R:FAIL }T
-T{ ' rec:2 ' rec:1 2 RS SET-STACK -> }T
-T{ S" 10"    RS MAP-RECOGNIZER   -> R:2 }T
+T{ S" 1"     RS RECOGNIZE   -> RECTYPE-NULL }T
+T{ ' rec-1 1 RS SET-STACK -> }T
+T{ S" 1"     RS RECOGNIZE   -> RECTYPE-1 }T
+T{ S" 10"    RS RECOGNIZE   -> RECTYPE-NULL }T
+T{ ' rec-2 ' rec-1 2 RS SET-STACK -> }T
+T{ S" 10"    RS RECOGNIZE   -> RECTYPE-2 }T
 
 \ extended synonym behaviour
 t{ create coc1 -> }t
@@ -194,8 +194,134 @@ t{ ' true is cod2 -> }t
 t{ cod2 -> true }t
 t{ cod1 -> true }t
 t{ action-of cod2 -> ' true }t
+: cod2-ao action-of cod2 ;
+t{ cod2-ao -> ' true }t
 
 \ synonym behaviour for umethods; SOURCE is a umethod
 t{ synonym source2 source -> }t
 t{ ' source2 -> ' source }t
 t{ action-of source2 -> action-of source }t
+: source2-ao action-of source2 ;
+t{ source2-ao -> action-of source }t
+
+\ synonym and immediate
+t{ create coc8 immediate -> }t
+t{ synonym coc9 coc8 -> }t
+t{ "coc8" find-name immediate? -> true }t
+t{ "coc9" find-name immediate? -> true }t
+t{ ] coc9 [ -> coc8 }t
+
+\ synonym and using nts as xts
+t{ "coc2" find-name execute -> coc1 }t
+\ t{ "coc2" find-name >body -> coc1 }t
+t{ : coca [ "coc2" find-name compile, ] ; -> }t
+t{ coca -> coc1 }t
+
+
+\ alias
+
+t{ ' coc1 alias coc4 -> }t
+t{ coc4 -> coc1 }t
+t{ : coc5 coc4 ; -> }t
+t{ coc5 -> coc1 }t
+t{ ' coc4 -> ' coc1 }t
+
+t{ ' coc1 alias coc6 immediate -> }t
+t{ "coc1" find-name immediate? -> false }t
+t{ "coc6" find-name immediate? -> true }t
+t{ ] coc6 [ -> coc1 }t
+t{ ' coc6 -> ' coc1 }t
+
+t{ ' cod1 alias aod2 -> }t
+t{ ' false is aod2 -> }t
+t{ aod2 -> false }t
+t{ cod1 -> false }t
+t{ action-of aod2 -> ' false }t
+: aod2-ao action-of aod2 ;
+t{ aod2-ao -> ' false }t
+
+\ alias behaviour for umethods; SOURCE is a umethod
+t{ ' source alias source3 -> }t
+t{ ' source3 -> ' source }t
+t{ action-of source3 -> action-of source }t
+: source3-ao action-of source3 ;
+t{ source3-ao -> action-of source }t
+
+\ alias and using nts as xts
+t{ "coc4" find-name execute -> coc1 }t
+\ t{ "coc4" find-name >body -> coc1 }t
+t{ : cocb [ "coc4" find-name compile, ] ; -> }t
+t{ cocb -> coc1 }t
+
+
+\ interpret/compile:
+
+t{ ' coc1 ' coc8 interpret/compile: cocc -> }t
+t{ cocc -> coc1 }t
+t{ ] cocc [ -> coc8 }t
+t{ "cocc" find-name execute -> coc1 }t
+t{ : cocd [ "cocc" find-name compile, ] ; -> }t
+t{ cocd -> coc1 }t
+
+t{ ' coc1 ' coc8 interpret/compile: coce immediate -> }t
+t{ coce -> coc1 }t
+t{ ] coce [ -> coc1 }t
+
+\ +to and addr
+
+1 value foo#
+2. 2value foo##
+3e fvalue foo%
+: +foo# +to foo# ;
+: &foo# addr foo# ;
+: +foo## +to foo## ;
+: &foo## addr foo## ;
+: +foo% +to foo% ;
+: &foo% addr foo% ;
+
+t{ 2 +to foo# foo# -> 3 }t
+t{ addr foo# @ -> 3 }t
+t{ 5. +to foo## foo## -> 7. }t
+t{ addr foo## 2@ -> 7. }t
+t{ 7e +to foo% foo% -> 10e }t
+t{ addr foo% f@ -> 10e }t
+
+t{ 2 +foo# foo# -> 5 }t
+t{ &foo# @ -> 5 }t
+t{ 5. +foo## foo## -> 12. }t
+t{ &foo## 2@ -> 12. }t
+t{ 7e +foo% foo% -> 17e }t
+t{ &foo% f@ -> 17e }t
+
+\ replace-word
+
+t{ : rw-test1 1 ; : rw-test2 2 ; -> }t
+t{ rw-test1 -> 1 }t
+t{ rw-test2 -> 2 }t
+t{ ' rw-test1 ' rw-test2 replace-word -> }t
+t{ rw-test2 -> 1 }t
+
+\ execute-exit
+
+t{ : execute1 execute-exit ; -> }t
+t{ 1 >r ' r> execute1 -> 1 }t
+t{ : execute2 {: xt :} xt execute-exit ; -> }t
+t{ : execute-exit-test {: a :} >r ['] r> execute2 a ; -> }t
+t{ 1 2 execute-exit-test -> 1 2 }t
+
+\ postpone locals
+t{ : pl-test1 'a' {: c: l :} postpone l ; immediate -> }t
+t{ : pl-test2 pl-test1 ; -> }t
+t{ pl-test2 -> 'a' }t
+t{ : pl-test3 8 9 {: d: l :} postpone l ; immediate -> }t
+t{ : pl-test4 pl-test3 ; -> }t
+t{ pl-test4 -> 8 9 }t
+t{ : pl-test5 123e {: f: l :} postpone l ; immediate -> }t
+t{ : pl-test6 pl-test5 ; -> }t
+t{ pl-test6 -> 123e }t
+t{ : pl-test7 123 {: l :} postpone l ; immediate -> }t
+t{ : pl-test8 pl-test7 ; -> }t
+t{ pl-test8 -> 123 }t
+t{ : pl-test9 ['] + {: xt: l :} postpone l ; immediate -> }t
+t{ : pl-testa pl-test9 ; -> }t
+t{ 3 6 pl-testa -> 9 }t

@@ -1,19 +1,12 @@
 \ soil wrapper
 
 \ dummy load for Android
-e? os-type s" linux-android" string-prefix? [IF]
-    s" libsoil.so" also c-lib open-path-lib drop previous
-[THEN]
+s" libsoil.so" prefetch-lib
     
 Vocabulary soil
 
 get-current also soil definitions
 
-c-library soillib
-    s" SOIL" add-lib
-    \c #include "SOIL/SOIL.h"
-
-    include unix/soil.fs
-end-c-library
+include unix/soil.fs
 
 previous set-current

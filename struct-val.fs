@@ -1,6 +1,6 @@
 \ add structure values to Forth 2012 structs
 
-\ Copyright (C) 2014,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -21,41 +21,72 @@ Defer +field,
 
 : standard+field, ( addr body -- addr' )
     @ + ;
-comp: drop @ ?dup-IF ['] lit+ peephole-compile, , THEN ;
+opt: drop @ ?dup-IF ['] lit+ peephole-compile, , THEN ;
 
-warnings @ warnings off
-: standard:field ( -- )
-    standard:field ['] standard+field, IS +field, ;
-warnings !
+:noname ( -- )
+    defers standard:field ['] standard+field, IS +field, ; is standard:field
 
 standard:field
 
-: vfield-int, ( addr body -- offset ) dup cell+ @ execute ;
-: vfield-comp, ( body -- ) dup cell+ @ compile, ;
+: vfield-int, ( addr body -- addr+offset ) dup cell+ @ execute ;
+: vfield-comp, ( body -- ) dup cell+ @ opt-compile, ;
 
 : create+value ( n1 addr "name" -- n3 )
     >r r@ cell+ cell+ 2@ r> 2@
     2>r >r Create over , + action-of +field, ,
     r> set-does> 2r> set-to set-optimizer ;
 
-: wrap+value: ( n2 xt-align xt@ xt! "name" -- ) { xt-align xt@ xt! }
+: create+defer ( n1 addr "name" -- n3 )
+    create+value
+    [: ( addr -- xt ) >body vfield-int, @ ;
+    defer@-opt: ( xt -- ) >body vfield-comp, postpone @ ;] set-defer@ ;
+
+: wrapper-xts ( xt@ !-table -- xt-does xt-opt xt-to ) { xt@ xt! }
     :noname ]] vfield-int, [[ xt@ compile, postpone ; \ xt-does
     :noname ]] >body vfield-comp, [[ xt@ ]]L compile, ; [[ \ xt-comp,
-    :noname ]] drop >body vfield-comp, [[ xt! ]]L compile, ; [[ \ xt-to-comp,
-    :noname ]] >body vfield-int, [[ xt! compile, postpone ; swap set-optimizer \ xt-to
-    :noname ]] >r [[ xt-align compile, ]] r> create+value ; [[
+    :noname ]] drop >body vfield-comp, [[ xt! ]]L to-!, ; [[ \ xt-to-comp,
+    :noname ]] >body vfield-int, [[ xt! ]]L to-!exec ; [[ swap set-optimizer ;
+
+: wrap+value: ( n2 xt-align xt@ !-table "name" -- ) rot { xt-align }
+    wrapper-xts :noname ]] >r [[ xt-align compile, ]] r> create+value ; [[
+    Create set-does> , , , , ;
+: wrap+defer: ( n2 xt-align xt@ !-table "name" -- ) rot { xt-align }
+    wrapper-xts :noname ]] >r [[ xt-align compile, ]] r> create+defer ; [[
     Create set-does> , , , , ;
 
-cell      ' aligned   ' @   ' !   wrap+value: value: ( u1 "name" -- u2 )
-1         ' noop      ' c@  ' c!  wrap+value: cvalue: ( u1 "name" -- u2 )
-2         ' waligned  ' w@  ' w!  wrap+value: wvalue: ( u1 "name" -- u2 )
-2         ' waligned  ' sw@ ' w!  wrap+value: swvalue: ( u1 "name" -- u2 )
-4         ' laligned  ' l@  ' l!  wrap+value: lvalue: ( u1 "name" -- u2 )
-4         ' laligned  ' sl@ ' l!  wrap+value: slvalue: ( u1 "name" -- u2 )
-2 cells   ' aligned   ' 2@  ' 2!  wrap+value: 2value: ( u1 "name" -- u2 )
-1 floats  ' faligned  ' f@  ' f!  wrap+value: fvalue: ( u1 "name" -- u2 )
-1 sfloats ' sfaligned ' sf@ ' sf! wrap+value: sfvalue: ( u1 "name" -- u2 )
-1 dfloats ' dfaligned ' df@ ' df! wrap+value: dfvalue: ( u1 "name" -- u2 )
+: w+! ( w addr -- ) dup >r w@ + r> w! ;
+: l+! ( w addr -- ) dup >r l@ + r> l! ;
+: sf+! ( w addr -- ) dup >r sf@ f+ r> sf! ;
+: df+! ( w addr -- ) dup >r df@ f+ r> df! ;
+: sc@ ( addr -- c ) c@ c>s ;
+opt: drop ]] c@ c>s [[ ;
+: $[]-@ ( n addr -- x ) $[] @ ;
+: $[]-! ( n addr -- x ) $[] ! ;
+: $[]-+! ( n addr -- x ) $[] +! ;
+
+Create w!-table  ' w!  , ' w+!  ,
+Create l!-table  ' l!  , ' l+!  ,
+Create sf!-table ' sf! , ' sf+! ,
+Create df!-table ' df! , ' df+! ,
+Create $!-table  ' $!  , ' $+!  ,
+Create $[]!-table ' $[]! , ' $[]+! ,
+Create $[]-!-table ' $[]-! , ' $[]-+! ,
+
+cell      ' aligned   ' @   !-table   wrap+value: value:   ( u1 "name" -- u2 )
+1         ' noop      ' c@  c!-table  wrap+value: cvalue:  ( u1 "name" -- u2 )
+1         ' noop      ' sc@ c!-table  wrap+value: scvalue:  ( u1 "name" -- u2 )
+2         ' waligned  ' w@  w!-table  wrap+value: wvalue:  ( u1 "name" -- u2 )
+2         ' waligned  ' sw@ w!-table  wrap+value: swvalue: ( u1 "name" -- u2 )
+4         ' laligned  ' l@  l!-table  wrap+value: lvalue:  ( u1 "name" -- u2 )
+4         ' laligned  ' sl@ l!-table  wrap+value: slvalue: ( u1 "name" -- u2 )
+2 cells   ' aligned   ' 2@  2!-table  wrap+value: 2value:  ( u1 "name" -- u2 )
+1 floats  ' faligned  ' f@  f!-table  wrap+value: fvalue:  ( u1 "name" -- u2 )
+1 sfloats ' sfaligned ' sf@ sf!-table wrap+value: sfvalue: ( u1 "name" -- u2 )
+1 dfloats ' dfaligned ' df@ df!-table wrap+value: dfvalue: ( u1 "name" -- u2 )
+cell      ' aligned   ' $@  $!-table  wrap+value: $value:  ( u1 "name" -- u2 )
+cell      ' aligned   ' perform !-table wrap+defer: defer: ( u1 "name" -- u2 )
+cell      ' aligned   ' $[]-@ $[]-!-table wrap+value: value[]: ( u1 "name" -- u2 )
+cell      ' aligned   ' $[]@ $[]!-table wrap+value: $value[]: ( u1 "name" -- u2 )
 
 0 [IF] \ test
     begin-structure foo

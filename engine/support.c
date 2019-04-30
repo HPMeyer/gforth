@@ -1,6 +1,6 @@
 /* Gforth support functions
 
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -21,6 +21,7 @@
 #include "config.h"
 #include "forth.h"
 #include "io.h"
+#include "symver.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
@@ -69,21 +70,23 @@ void* malloc_ll(size_t size)
 
 void free_ll(void* addr)
 {
+  if (addr != NULL) {
 #ifdef HAVE_MPROBE
-  if(debug_mcheck) {
-    int reason;
-    pthread_mutex_lock(&memlock);
-    reason=mprobe(addr);
-    pthread_mutex_unlock(&memlock);
-    debugp(stderr, "free(%8p)=%d;\n", addr, reason);
-    if(reason > 0) {
-      throw(-2049-reason);
+    if(debug_mcheck) {
+      int reason;
+      pthread_mutex_lock(&memlock);
+      reason=mprobe(addr);
+      pthread_mutex_unlock(&memlock);
+      debugp(stderr, "free(%8p)=%d;\n", addr, reason);
+      if(reason > 0) {
+	throw(-2049-reason);
+      }
     }
-  }
 #endif
-  pthread_mutex_lock(&memlock);
-  free(addr);
-  pthread_mutex_unlock(&memlock);
+    pthread_mutex_lock(&memlock);
+    free(addr);
+    pthread_mutex_unlock(&memlock);
+  }
 }
 
 void* realloc_ll(void* addr, size_t size)
@@ -111,7 +114,7 @@ char *cstr(Char *from, UCell size)
    the C-string lives until free */
 {
   char * string = malloc_l(size+1);
-  memcpy(string,from,size);
+  memmove(string,from,size);
   string[size]='\0';
   return string;
 }
@@ -167,7 +170,7 @@ char *tilde_cstr(Char *from, UCell size)
       return cstr(from+3, size<3?0:size-3);
     {
       char user[i];
-      memcpy(user,from+1,i-1);
+      memmove(user,from+1,i-1);
       user[i-1]='\0';
       user_entry=getpwnam(user);
     }
@@ -182,8 +185,8 @@ char *tilde_cstr(Char *from, UCell size)
     s1_len--;
   {
     char path[s1_len+s2_len];
-    memcpy(path,s1,s1_len);
-    memcpy(path+s1_len,s2,s2_len);
+    memmove(path,s1,s1_len);
+    memmove(path+s1_len,s2,s2_len);
     if(allocs1) free_l(s1);
     return cstr((Char *)path,s1_len+s2_len);
   }
@@ -264,8 +267,9 @@ void cmove_up(Char *c_from, Char *c_to, UCell u)
 Cell compare(Char *c_addr1, UCell u1, Char *c_addr2, UCell u2)
 {
   Cell n;
+  Cell umin = u1<u2 ? u1 : u2;
 
-  n = memcmp(c_addr1, c_addr2, u1<u2 ? u1 : u2);
+  n = (umin == 0) ? 0 : memcmp(c_addr1, c_addr2, umin);
   if (n==0)
     n = u1-u2;
   if (n<0)
@@ -385,7 +389,7 @@ void hashkey2(Char* c_addr, UCell u, uint64_t upmask, hash128 *h)
   Char* endp = c_addr+(u&-sizeof(uint64_t)), *endp1=c_addr+u-sizeof(uint64_t);
   // read all full words
   for(; c_addr<endp; c_addr+=sizeof(uint64_t)) {
-    memcpy(&mixin, c_addr, sizeof(uint64_t));
+    memmove(&mixin, c_addr, sizeof(uint64_t));
     // printf("+%lx\n", mixin);
     mixin |= upmask & ~(mixin >> 2); // case insensitive trick
     a ^= mixin;
@@ -401,7 +405,7 @@ void hashkey2(Char* c_addr, UCell u, uint64_t upmask, hash128 *h)
       endp = endp1;
       lastshift= shift;
     }
-    memcpy(&mixin, endp, sizeof(uint64_t));
+    memmove(&mixin, endp, sizeof(uint64_t));
     // strip off parts read after the string end
     // and mix in length of remaining fragment
 #ifdef WORDS_BIGENDIAN
@@ -443,14 +447,14 @@ UCell hashkey2a(Char *s, UCell n)
     if (((((UCell)(s+n-1))^((UCell)(s+w-1)))&(-pagesize)) != 0) {
       /* cell access would cross page boundary, but byte access wouldn't */
       /* so cell access to s might incur a SIGSEGV */
-      memcpy(&h,(char *)(s+n-w),w);
+      memmove(&h,(char *)(s+n-w),w);
 #ifdef WORDS_BIGENDIAN
       h = h & ((~(UCell)0) >> erase);
 #else
       h = h>>erase;
 #endif
     } else {
-      memcpy(&h,s,w);
+      memmove(&h,s,w);
 #ifdef WORDS_BIGENDIAN
       h = h>>erase;
 #else
@@ -465,14 +469,14 @@ UCell hashkey2a(Char *s, UCell n)
     Char *p = s;
     h = seed;
     do {
-      memcpy(&h1,p,w);
+      memmove(&h1,p,w);
       h1 |= upmask & ~(h1 >> 2); // case insensitive trick
       h = (h^h1)*k0;
       h = rotl(h,rot1);
       p += w;
     } while (p<s+n-w);
     p = s+n-w;
-    memcpy(&h1,p,w);
+    memmove(&h1,p,w);
     h1 |= upmask & ~(h1 >> 2); // case insensitive trick
     h = (h^h1)*k0;
     h = rotl(h,rot1);
@@ -720,8 +724,8 @@ int gforth_system(Char *c_addr, UCell u)
   old_tp=terminal_prepped;
   deprep_terminal();
 #endif
-  memcpy(buffer,prefix,prefixlen);
-  memcpy(buffer+prefixlen,c_addr,u);
+  memmove(buffer,prefix,prefixlen);
+  memmove(buffer+prefixlen,c_addr,u);
   buffer[prefixlen+u]='\0';
   retval=system(buffer); /* ~ expansion on first part of string? */
 #ifndef MSDOS
@@ -956,11 +960,14 @@ DCell smdiv (DCell num, Cell denom)
   UCell MAYBE_UNUSED lz;
   
   vm_d2twoCell(u,u0,u1);
-  if (v==0)
+  if (denom==0)
     throw(BALL_DIVZERO);
-  if (u1>=v)
-    throw(BALL_RESULTRANGE);
-  sdiv_qrnnd(q,r,u1,u0,v);
+  sdiv_qrnnd(q,r,u1,u0,denom);
+  if ((u1^denom)<0)
+    if(q>0)
+      throw(BALL_RESULTRANGE);
+    else if(q<0)
+      throw(BALL_RESULTRANGE);
   vm_twoCell2d(q,r,res);
 #else
   UDCell ures;

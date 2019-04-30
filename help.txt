@@ -1,10 +1,12 @@
 
 The Gforth manual is available on
 https://www.complang.tuwien.ac.at/forth/gforth/Docs-html/
-or through your favourite info reader (e.g., "info gforth" from the shell).
+or through your favourite info reader (e.g., "info gforth" from the shell)
+or you can just type "help <word>" to display the relevant help section.
 To leave Gforth, type "bye", or use Ctrl-D at the start of a line.
 To input floating-point numbers, use an exponent, e.g. "1e".
 To input double-cell integers without warnings, use a base-prefix and put
 the '.' only in the last position, e.g. "#1.".
-Disable warnings with WARNINGS OFF and reduce warnings with -1 WARNINGS !
-Config in ~/.gforthrc0 before loading anything, ~/.gforthrc for interactive mode
+For better colors on dark background, type "black-colors".
+Disable warnings with "warnings off" and reduce warnings with "-1 warnings !"
+Config in ~/.config/gforthrc0 before loading anything, ~/.config/gforthrc for interactive mode

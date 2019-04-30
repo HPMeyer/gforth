@@ -1,6 +1,6 @@
 /* This is the machine-specific part for the Power (incl. PPC) architecture
 
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2005,2007,2008 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2005,2007,2008,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -25,5 +25,7 @@
 #include "../generic/machine.h"
 #include <sys/types.h>
 
+#ifndef FLUSH_ICACHE
 extern void _sync_cache_range (caddr_t eaddr, size_t count);
-#define FLUSH_ICACHE(addr,size)   _sync_cache_range(addr,size)
+# define FLUSH_ICACHE(addr,size)   _sync_cache_range(addr,size)
+#endif

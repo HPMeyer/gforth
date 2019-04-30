@@ -1,6 +1,6 @@
 \ dynamic string handling                              10aug99py
 
-\ Copyright (C) 2000,2005,2007,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2000,2005,2007,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,7 +17,6 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-[IFUNDEF] $!
 : delete   ( buffer size u -- ) \ gforth-string
     \G deletes the first @var{u} bytes from a buffer and fills the
     \G rest at the end with blanks.
@@ -39,7 +38,7 @@
 	dup #16 rshift or
 	[ cell 8 = [IF] ]
 	    dup #32 rshift or
-	    [ [THEN] ] 1+ ;
+	[ [THEN] ] 1+ ;
 [THEN]
 
 : $padding ( n -- n' ) \ gforth-string
@@ -79,9 +78,13 @@
 	over @ @ $padding over = IF  drop @ !  EXIT  THEN
     THEN
     over @ swap resize throw over ! @ ! ;
+: $+!len ( u $addr -- addr )
+    \G make room for u bytes at the end of the memory area referenced
+    \G by $addr; addr is the address of the first of these bytes.
+    >r r@ $@len tuck + r@ $!len r> @ cell+ + ;
 : $+! ( addr1 u $addr -- ) \ gforth-string string-plus-store
     \G appends a string to another.
-    >r r@ $@len 2dup + r@ $!len r> $@ rot /string rot umin move ;
+    over >r $+!len r> move ;
 : c$+! ( char $addr -- ) \ gforth-string c-string-plus-store
     \G append a character to a string.
     dup $@len 1+ over $!len $@ + 1- c! ;
@@ -94,12 +97,6 @@
     >r >r dup $@ r> safe/string r@ delete
     dup $@len r> - 0 max swap $!len ;
 
-: $boot ( $addr -- )
-    \G take string from dictionary to allocated memory
-    dup >r $@ r@ off r> $! ;
-: $save ( $addr -- )
-    \G push string to dictionary for savesys
-    dup >r $@ here r> ! dup , here swap dup aligned allot move ;
 : $init ( $addr -- )
     \G store an empty string there, regardless of what was in before
     s" " $make swap ! ;
@@ -120,4 +117,75 @@
     >r >r
     $@ BEGIN  dup  WHILE  r@ $split i' -rot >r >r execute r> r>
     REPEAT  2drop rdrop rdrop ;
-[THEN]
+
+\ basics for string arrays
+
+: $room ( u $addr -- )
+    \G generate room for at least u bytes, erase when expanding
+    >r dup r@ $@len tuck u<= IF  rdrop 2drop EXIT  THEN
+    - dup r> $+!len swap 0 fill ;
+
+: $[] ( u $[]addr -- addr' )
+    \G index into the string array and return the address at index @var{u}
+    \G The array will be resized as needed
+    >r cells dup cell+ r@ $room  r> $@ drop + ;
+
+\ auto-save and restore strings in images
+
+: $boot ( $addr -- )
+    \G take string from dictionary to allocated memory.
+    \G clean dictionary afterwards.
+    dup >r $@ 2dup r> dup off $! 0 fill ;
+: $save ( $addr -- )
+    \G push string to dictionary for savesys
+    dup >r $@ here r> ! dup , here swap dup aligned allot move ;
+: $[]boot ( addr -- )
+    \G take string array from dictionary to allocated memory
+    dup $boot  $@ bounds ?DO
+	I $boot
+    cell +LOOP ;
+: $[]save ( addr -- )
+    \G push string array to dictionary for savesys
+    dup $save $@ bounds ?DO
+	I $save
+    cell +LOOP ;
+
+AVariable boot$[]  \ strings to be booted
+AVariable boot[][] \ arrays to be booted
+
+: $saved ( addr -- )
+    \ mark an address as booted/saved
+    boot$[] >stack ;
+: $[]saved ( addr -- )
+    \ mark an address as booted/saved
+    boot[][] >stack ;
+: $Variable ( -- )
+    \G A string variable which is preserved across savesystem
+    Create here $saved 0 , ;
+: $[]Variable ( -- )
+    \G A string variable which is preserved across savesystem
+    Create here $[]saved 0 , ;
+: boot-strings ( -- )
+    boot[][] @ >r
+    boot[][] $boot
+    boot$[] $boot
+    boot[][] $@ bounds ?DO
+	I @ $[]boot
+    cell +LOOP
+    boot$[] $@ bounds ?DO
+	I @ $boot
+    cell +LOOP
+    r> dp ! ;
+: save-strings ( -- )
+    boot[][] $save
+    boot$[] $save
+    boot[][] $@ bounds ?DO
+	I @ $[]save
+    cell +LOOP
+    boot$[] $@ bounds ?DO
+	I @ $save
+    cell +LOOP ;
+
+Defer 'image ( -- ) \G deferred word executed before saving an image
+' save-strings IS 'image
+

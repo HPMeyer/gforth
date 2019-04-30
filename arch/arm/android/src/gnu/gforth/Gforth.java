@@ -1,6 +1,6 @@
 /* Android activity for Gforth on Android
 
-  Copyright (C) 2013,2014,2015,2016 Free Software Foundation, Inc.
+  Copyright (C) 2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -23,6 +23,7 @@ package gnu.gforth;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Build;
+import android.os.Environment;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
 import android.text.ClipboardManager;
@@ -58,6 +59,8 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.ExtractedTextRequest;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableStringBuilder;
@@ -65,10 +68,16 @@ import android.app.Activity;
 import android.app.ProgressDialog;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.NotificationChannel;
 import android.net.ConnectivityManager;
+import android.net.Uri;
 import android.util.Log;
 import android.util.AttributeSet;
 import android.widget.Toast;
+import android.content.pm.PackageManager;
+import android.Manifest;
 import java.lang.Object;
 import java.lang.Runnable;
 import java.lang.String;
@@ -91,6 +100,7 @@ public class Gforth
     private double argf0=10;    // update every 10 meters
     private String args0="gps";
     private Sensor argsensor;
+    private Notification argnotify;
     private Gforth gforth;
     private LocationManager locationManager;
     private SensorManager sensorManager;
@@ -101,6 +111,8 @@ public class Gforth
     private BroadcastReceiver recKeepalive, recConnectivity;
     private PendingIntent pintent, gforthintent;
     private PowerManager powerManager;
+    private NotificationManager notificationManager;
+    private NotificationChannel notificationChannel;
     private WakeLock wl, wl_cpu;
     private GforthView mView;
     private InputStream gforthfd;
@@ -124,7 +136,14 @@ public class Gforth
     public Runnable appexit;
     public Runnable rshowstatus;
     public Runnable rhidestatus;
+    public Runnable rkeepscreenon;
+    public Runnable rkeepscreenoff;
+    public Runnable rsecurescreenon;
+    public Runnable rsecurescreenoff;
+    public Runnable notifyer;
+    public Runnable startbrowser;
     public ProgressDialog progress;
+    public String cameraPath;
 
     private static final String META_DATA_LIB_NAME = "android.app.lib_name";
     private static final String META_DATA_STARTFILE = "android.app.startfile";
@@ -145,12 +164,42 @@ public class Gforth
 	static class MyInputConnection extends BaseInputConnection {
 	    private SpannableStringBuilder mEditable;
 	    private GforthView mView;
+	    private String mText;
+	    private ExtractedTextRequest mExtractedTextRequest;
+	    private ExtractedText et;
 	    
 	    public MyInputConnection(GforthView targetView, boolean fullEditor) {
 		super(targetView, fullEditor);
 		mView = targetView;
+		mExtractedTextRequest = null;
 	    }
-	    
+
+	    private ExtractedText setET(String text, int curpos, int len) {
+		if(et == null) {
+		    et = new ExtractedText();
+		}
+		et.partialStartOffset = 0;
+		et.partialEndOffset = (text != null) ? text.length() : 0;
+		et.startOffset = 0;
+		et.selectionStart = curpos; // getSelectionStart();
+		et.selectionEnd = curpos+len; // getSelectionEnd();
+		et.flags = 0;
+		et.text = text;
+
+		return et;
+	    }
+	    private int min(int a, int b) { return a < b ? a : b; }
+	    private int max(int a, int b) { return a > b ? a : b; }
+	    public CharSequence	getTextBeforeCursor(int n, int flags) {
+		if(et == null || et.text == null) return "";
+		return et.text.subSequence(max(0, et.selectionStart-n),
+					   et.selectionStart);
+	    }
+	    public CharSequence	getTextAfterCursor(int n, int flags) {
+		if(et == null || et.text == null) return "";
+		return et.text.subSequence(et.selectionStart,
+					   min(et.text.length(), et.selectionStart+n));
+	    }
 	    public Editable getEditable() {
 		if (mEditable == null) {
 		    mEditable = (SpannableStringBuilder) Editable.Factory.getInstance()
@@ -159,10 +208,15 @@ public class Gforth
 		return mEditable;
 	    }
 	    
-	    public void setEditLine(String line, int curpos) {
+	    public void setEditLine(String line, int curpos, int len) {
 		Log.v(TAG, "IC.setEditLine: \"" + line + "\" at: " + curpos);
 		getEditable().clear();
 		getEditable().append(line);
+		if(mExtractedTextRequest != null) {
+		    mView.mManager.
+			updateExtractedText(mView, mExtractedTextRequest.token,
+					    setET(line, curpos, len));
+		}
 		setSelection(curpos, curpos);
 	    }
 	    
@@ -207,18 +261,48 @@ public class Gforth
 		return true;
 	    }
 	    public boolean setComposingRegion (int start, int end) {
-		end-=start;
-		if(end < 0) {
-		    start+=end;
-		    end = -end;
+		if(start > end) {
+		    int start1 = start;
+		    start = end;
+		    end = start1;
 		}
-		mView.mActivity.onEventNative(19, start);
-		mView.mActivity.onEventNative(20, end);
+		end -= start;
+		if(end > 0) {
+		    mView.mActivity.onEventNative(19, start);
+		    mView.mActivity.onEventNative(20, end);
+		}
 		return super.setComposingRegion(start, start+end);
 	    }
 	    public boolean sendKeyEvent (KeyEvent event) {
 		mView.mActivity.onEventNative(0, event);
 		return true;
+	    }
+	    public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
+		if ((flags & GET_EXTRACTED_TEXT_MONITOR) != 0)
+		    mExtractedTextRequest = request;  // mExtractedTextRequest currently doing nothing
+		else
+		    mExtractedTextRequest = null;
+
+		return setET("", 0, 0);
+	    }
+
+	    @Override
+	    public boolean performContextMenuAction(int id) {
+		switch (id) {
+		case android.R.id.copy:
+		    mView.mActivity.onEventNative(23, 0);
+		    return true;
+		case android.R.id.cut:
+		    mView.mActivity.onEventNative(23, 1);
+		    return true;
+		case android.R.id.paste:
+		    mView.mActivity.onEventNative(23, 2);
+		    return true;
+		case android.R.id.selectAll:
+		    mView.mActivity.onEventNative(23, 3);
+		    return true;
+		}
+		return false;
 	    }
 	}
 	
@@ -374,17 +458,20 @@ public class Gforth
     public void hideStatus() {
 	// Hide Status Bar
 	if (Build.VERSION.SDK_INT < 16) {
-	    getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-				 WindowManager.LayoutParams.FLAG_FULLSCREEN);
+	    getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 	}
-	else {
+	else if (Build.VERSION.SDK_INT < 19) {
 	    getWindow().getDecorView().setSystemUiVisibility(0x1004);
 	    // View.SYSTEM_UI_FLAG_FULLSCREEN | SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 	}
+	else {
+	    getWindow().getDecorView().setSystemUiVisibility(0x806);
+	    // View.SYSTEM_UI_FLAG_FULLSCREEN | SYSTEM_UI_FLAG_IMMERSIVE
+	}
     }
-    public void setEditLine(String line, int curpos) {
-	Log.v(TAG, "setEditLine: \"" + line + "\" at: " + curpos);
-	if(mView!=null) mView.mInputConnection.setEditLine(line, curpos);
+    public void setEditLine(String line, int curpos, int len) {
+	Log.v(TAG, "setEditLine: \"" + line + "\" at: " + curpos + " len: " + len);
+	if(mView!=null) mView.mInputConnection.setEditLine(line, curpos, len);
     }
 
     @Override
@@ -393,9 +480,22 @@ public class Gforth
         String libname = "gforth";
 
 	gforth=this;
-	progress=null;
 
-        // getWindow().takeSurface(this);
+	if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+	    != PackageManager.PERMISSION_GRANTED) {
+	    if (shouldShowRequestPermissionRationale(Manifest.permission.READ_EXTERNAL_STORAGE)) {
+		Log.v(TAG, "Write to SD card needs explanation");
+		// Show an explanation to the user *asynchronously* -- don't block
+		// this thread waiting for the user's response! After the user
+		// sees the explanation, try again to request the permission.
+	    }
+	    requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+			       1);
+	}
+	
+	progress=null;
+	cameraPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).getAbsolutePath();
+
         getWindow().setSoftInputMode(
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
                 | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -433,6 +533,15 @@ public class Gforth
 	connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
 	inputMethodManager = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
 	powerManager = (PowerManager)getSystemService(Context.POWER_SERVICE);
+	notificationManager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+	if (Build.VERSION.SDK_INT >= 26) {
+	    notificationChannel = new NotificationChannel("gnu.gforth.notifications", "Messages", NotificationManager.IMPORTANCE_DEFAULT);
+	    notificationChannel.enableLights(true);
+	    notificationChannel.setShowBadge(true);
+	    
+	    notificationManager.createNotificationChannel(notificationChannel);
+	}
+	
 	wl = powerManager.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK |PowerManager.ACQUIRE_CAUSES_WAKEUP |PowerManager.ON_AFTER_RELEASE,"MyLock");
 	wl_cpu = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"MyCpuLock");
 	
@@ -492,6 +601,38 @@ public class Gforth
 		    hideStatus();
 		}
 	    };
+	rkeepscreenon=new Runnable() {
+		public void run() {
+		    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		}
+	    };
+	rkeepscreenoff=new Runnable() {
+		public void run() {
+		    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		}
+	    };
+	rsecurescreenon=new Runnable() {
+		public void run() {
+		    getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+		}
+	    };
+	rsecurescreenoff=new Runnable() {
+		public void run() {
+		    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+		}
+	    };
+	notifyer=new Runnable() {
+		public void run() {
+		    Log.v(TAG, "show notification");
+		    notificationManager.notify((int)argj0, argnotify);
+		    Log.v(TAG, "done notification");
+		}
+	    };
+	startbrowser=new Runnable() {
+		public void run() {
+		    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(args0)));
+		}
+	    };
 	
 	recKeepalive = new BroadcastReceiver() {
 		@Override public void onReceive(Context context, Intent foo)
@@ -504,13 +645,17 @@ public class Gforth
 	registerReceiver(recKeepalive, new IntentFilter("gnu.gforth.keepalive") );
 	
 	pintent = PendingIntent.getBroadcast(this, 0, new Intent("gnu.gforth.keepalive"), 0);
-	Intent startgforth = new Intent(this, Gforth.class);
-	startgforth.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT |
-			     Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
-	gforthintent = PendingIntent.getActivity(this, 1, startgforth,
-						 PendingIntent.FLAG_UPDATE_CURRENT);
+	// intent for notifications
+	gforthintent = PendingIntent.getActivity
+	    (this, 1,
+	     new Intent(this, getClass())
+	     .setAction("gnu.gforth.Gforth_n2o.MESSAGE")
+	     .setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT |
+		       Intent.FLAG_ACTIVITY_SINGLE_TOP),
+	     PendingIntent.FLAG_UPDATE_CURRENT);
 
+	// intent for network connectivity (!!use netlink socket!!)
 	recConnectivity = new BroadcastReceiver() {
 		public void onReceive(Context context, Intent intent) {
 		    // boolean metered = connectivityManager.isActiveNetworkMetered();
@@ -542,6 +687,7 @@ public class Gforth
 	setIntent(intent);
 	activated = -1;
 	if(surfaced) onEventNative(18, activated);
+	onEventNative(23, intent);
     }
 
     @Override protected void onResume() {

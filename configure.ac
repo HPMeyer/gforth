@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 
-#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -20,13 +20,13 @@ dnl Process this file with autoconf to produce a configure script.
 
 #We use some automake macros here,
 #but don't use automake for creating Makefile.in
-AC_INIT([gforth],[0.7.9_20170308],[https://savannah.gnu.org/bugs/?func=addbug&group=gforth])
+AC_INIT([gforth],[0.7.9_20190404],[https://savannah.gnu.org/bugs/?func=addbug&group=gforth])
 AC_PREREQ(2.54)
 AC_CONFIG_MACRO_DIR([m4])
 #snapshots have numbers major.minor.release_YYYYMMDD
 #note that lexicographic ordering must be heeded.
 #I.e., 0.4.1_YYYYMMDD must not exist before 0.4.1!
-UPDATED="January 12, 2017"
+UPDATED="February 8, 2018"
 AC_SUBST(UPDATED)
 AC_CONFIG_HEADERS(engine/config.h)
 AC_USE_SYSTEM_EXTENSIONS
@@ -195,6 +195,16 @@ AC_ARG_WITH(ditc,
 fi])
 AC_SUBST(DITCENGINE)
 
+GFORTH_VERSION=$PACKAGE_VERSION
+AC_SUBST(GFORTH_VERSION)
+
+AC_ARG_ENABLE(version,
+	AC_HELP_STRING([--disable-version],
+			[  disable multi-version install]),
+[if test "$enableval" = "no"; then
+    PACKAGE_VERSION=current
+fi],)
+
 #variables mentioned in INSTALL
 AC_ARG_VAR(SH, [The shell])
 AC_ARG_VAR(CC, [The C compiler (must support GNU C 2.x).])
@@ -310,8 +320,25 @@ fi
 test $ac_export_dynamic = yes && LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
 test $ac_export_dynamic = yes && AC_DEFINE(HAS_BACKLINK,,[Define if you have backlinks])
 AC_MSG_RESULT($ac_export_dynamic)
+AX_GCC_BUILTIN(__builtin___clear_cache)
 
 FAST=no
+ANDROID_EXTRA=""
+case "$host_os" in
+    *android*)
+	case "$host_cpu" in
+	    arm64*|aarch64*|mips64*)
+	    	AC_DEFINE(__ANDROID_API__,21,[Define if you use Android])
+		ANDROID_EXTRA=-D__ANDROID_API__=21
+		;;
+	    *)
+	    	AC_DEFINE(__ANDROID_API__,19,[Define if you use Android])
+		ANDROID_EXTRA=-D__ANDROID_API__=19
+		;;
+	esac
+	;;
+esac
+AC_SUBST(ANDROID_EXTRA)
 #terminology is a bit unusual here: The host is the system on which
 #gforth will run; the system on which configure will run is the `build'
 case "$host_cpu" in
@@ -327,9 +354,15 @@ case "$host_cpu" in
 		machine=arm
 		CFLAGS="$CFLAGS -fomit-frame-pointer"
 		case "$host" in
+		    *gnueabihf)
+			# don't build for thumb
+			CFLAGS="$CFLAGS -marm -march=armv6"
+			FAST="yes" # build extra fast libraries
+			;;
 		    *gnueabi*)
 			# don't build for thumb
 			CFLAGS="$CFLAGS -marm"
+			FAST="yes" # build extra fast libraries
 			;;
 		esac
 		if test x$platform = xnxt; then
@@ -346,9 +379,10 @@ case "$host_cpu" in
 			AC_LIBOBJ(arm-cacheflush-linux)
 			;;
 		     *)   
-			no_dynamic_default=1
 			AC_LIBOBJ(arm-cacheflush0)
 			AC_MSG_WARN([No I-cache flush code known, disabling dynamic native code generation])
+			config_warns="$config_warns
+Dynamic NC generation disabled."
 			;;
                 esac
                 #longer skipcodes lead to problems on ARM, and it uses
@@ -359,7 +393,7 @@ case "$host_cpu" in
 		machine=hppa
 		AC_LIBOBJ(hppa-cache)
 		#-N needed for --dynamic <M4U3b.3790$9d.317@news.cpqcorp.net>
-		LDFLAGS="$LDFLAGS -Xlinker -N"
+		#LDFLAGS="$LDFLAGS -Xlinker -N" # no longer needed
 		LIBS="$LIBS -L/lib/pa1.1/"
 		;;
 	sparc*)
@@ -447,8 +481,10 @@ case "$host_cpu" in
 		#
 		#Therefore we disable dynamic native code by default:
 		if test -z "$no_dynamic_default"; then
-		    no_dynamic_default=1
-		    AC_MSG_WARN([Disabling default dynamic native code generation (relocation and delay slot issues)])
+			no_dynamic_default=1
+			AC_MSG_WARN([Disabling default dynamic native code generation (relocation and delay slot issues)])
+			config_warns="$config_warns
+Dynamic Code generation disabled (relocation and delay slot issues).]"
 		fi
 		;;
 	alpha*)
@@ -471,15 +507,23 @@ case "$host_cpu" in
                 #work with gcc-3.[34]
 		test "$skipcode" || skipcode="nop\nnop\nnop\nnop"
 		;;
+	tile*)
+		machine=tile
+		;;
 	*)
 		AC_MSG_WARN([Using a generic machine description])
 		AC_MSG_WARN([Assuming C floats and doubles are IEEE floats and doubles (for SF@ DF@ SF! DF!)])
-		AC_MSG_WARN([FLUSH-ICACHE will do nothing, so END-CODE may not work properly!])
+		config_warns="$config_warns
+Generic machine description used."
 		machine=generic
 		#I-cache flushing would be needed for dynamic code generation
 		if test -z $no_dynamic_default; then
-		    no_dynamic_default=1
-		    AC_MSG_WARN([No I-cache flush code known, disabling dynamic native code generation])
+		    if test no = $ax_cv_have___builtin___clear_cache; then
+			AC_MSG_WARN([FLUSH-ICACHE will do nothing, so END-CODE may not work properly!])
+			AC_MSG_WARN([Disabling default dynamic native code generation (no I-Cache synchronization)])
+			config_warns="$config_warns
+Dynamic Code generation disabled (no I-cache synchronization)."
+		    fi
 		fi
 esac
 AC_SUBST(host)
@@ -866,9 +910,9 @@ case "$host_os" in
 			;;
 			*)
 				host_os=darwin # remove version number
-				test -d /opt/X11/include && CFLAGS="$CFLAGS -I/opt/X11/include"
+				test -d /opt/X11/include && CPPFLAGS="$CPPFLAGS -I/opt/X11/include"
 				test -d /opt/X11/lib && LDFLAGS="$LDFLAGS -L/opt/X11/lib"
-				test -d /sw/include && CFLAGS="$CFLAGS -I/sw/include"
+				test -d /sw/include && CPPFLAGS="$CPPFLAGS -I/sw/include"
 				test -d /sw/lib && LDFLAGS="$LDFLAGS -L/sw/lib"
 			;;
 		esac
@@ -1010,6 +1054,8 @@ then
     if test -z $no_dynamic_default; then
 	no_dynamic_default=1
 	AC_MSG_WARN(Disabling default dynamic native code generation)
+	config_warns="$config_warns
+Dynamic NC generation disabled."
     fi
     AC_DEFINE_UNQUOTED(SKIP16,asm(""),statement for skipping 16 bytes)
 else
@@ -1041,10 +1087,21 @@ AC_DEFINE_UNQUOTED(NO_DYNAMIC_DEFAULT,$no_dynamic_default,default value for no_d
 AC_PROG_LN_S
 AC_PROG_INSTALL
 AC_CHECK_PROGS(TEXI2DVI,texi2dvi4a2ps texi2dvi)
+AC_CHECK_PROGS(RECODE,recode iconv)
 
+if test x$RECODE == xrecode; then
+   RECODE_ARGS=l1..
+else
+   RECODE_ARGS="-f LATIN1"
+fi
+AC_SUBST(RECODE_ARGS)
 #check for the presence of Emacs
 AC_CHECK_PROGS(EMACS,emacs xemacs)
-test -n "$EMACS" && gforth_elc=gforth.elc
+if test -n "$EMACS"; then
+  gforth_elc=gforth.elc
+else
+  AC_MSG_WARN([No emacs found, won't build gforth.elc.])
+fi
 AC_SUBST(gforth_elc)
 
 #MacOS X has a libtool that does something else
@@ -1052,6 +1109,9 @@ AC_CHECK_PROGS(GNU_LIBTOOL,"glibtool --tag=CC" libtool)
 if test -z "$GNU_LIBTOOL"; then
   AC_MSG_WARN([No GNU_LIBTOOL found, using "libtool" as name.])
   AC_MSG_WARN([libcc.fs won't work until you have installed (GNU) libtool.])
+  AC_MSG_WARN([(package libtool-bin on Debian).])
+  config_warns="$config_warns
+GNU libtool not found (package libtool-bin on Debian)."
   #'
   GNU_LIBTOOL=libtool
 fi
@@ -1079,6 +1139,9 @@ elif test -n "GNU_LIBTOOL" -a $ac_cv_func_dlopen = yes; then
 else
   AC_MSG_WARN([No LIBTOOL found, skip pre-building libcc-based libraries])
   AC_MSG_WARN([No LIBTOOL found, skip building library])
+  AC_MSG_WARN([If you use Debian, install libtool-bin])
+  config_warns="$config_warns
+GNU libtool not found."
   enable_lib=no
 fi
 AC_SUBST(build_libcc_named)
@@ -1123,6 +1186,8 @@ else
 fi
 if test $LIBFFIFLAG = false -a $FFCALLFLAG = false; then
   AC_MSG_WARN([The (old) lib.fs foreign function interface needs either libffi or the ffcall libraries])
+  config_warns="$config_warns
+Old foreign interfaces not supported (libffi or ffcall)."
 fi
 AC_SUBST(LIBFFIFLAG)
 AC_SUBST(FFCALLFLAG)
@@ -1143,11 +1208,13 @@ AC_CHECK_FUNCS(mcheck mprobe)
 AC_REPLACE_FUNCS(rint ecvt_r)
 #No check for select, because our replacement is no good under
 #anything but DOS
-AC_CHECK_HEADERS(sys/mman.h fnmatch.h alloca.h wchar.h endian.h)
+AC_CHECK_HEADERS(sys/mman.h sys/epoll.h fnmatch.h alloca.h wchar.h endian.h spawn.h)
 AC_REPLACE_FUNCS(wcwidth)
 AC_FUNC_FNMATCH
 test $ac_cv_func_fnmatch_works = yes || AC_LIBOBJ(fnmatch)
 AC_CHECK_FUNCS(mmap sysconf getpagesize pselect pthread_setaffinity_np)
+AC_CHECK_FUNC(getentropy,[GETENTROPY=true],[GETENTROPY=false])
+AC_SUBST(GETENTROPY)
 AM_PATH_LISPDIR
 AX_GCC_BUILTIN(__builtin_clzl)
 AX_GCC_BUILTIN(__builtin_bswap16)
@@ -1198,13 +1265,18 @@ AC_SUBST(include_fi)
 AC_MSG_CHECKING([for gforth])
 if test -z "$GFORTH"
 then
-    GFORTH="`cd / && which gforth 2>/dev/null`"
+    GFORTH="`cd / && command -v gforth`"
     (cd / && "$GFORTH" -e bye >/dev/null 2>/dev/null) || GFORTH=""
 fi
 if test -z "$GFORTH"; then
   PREFORTH='echo "You need to configure with a gforth in \$PATH to build this part" && false'
   GFORTHKER='echo "You need to configure with a gforth in \$PATH to build this part" && false'
   kernel_anti_dependence=''
+  if [ ! -f ${srcdir}/kernl32l.fi ]
+  then
+    config_warns="$config_warns
+No Gforth found in path, build from git will fail"
+  fi
 else
   GFORTH_MAGIC="`cd / && "$GFORTH" --debug -e bye 2>&1 |grep \"Magic found:\"`"
   case "$GFORTH_MAGIC" in
@@ -1252,6 +1324,8 @@ AC_SUBST(incdir)
 test x$SWIG = x && AC_PATH_PROG(SWIG, swig)
 if test -z "$SWIG"; then
    AC_MSG_WARN([*** Could not find swig in your PATH. The library bindings cannot be built.])
+   config_warns="$config_warns
+swig not found."
 fi
 
 has_swig=no
@@ -1262,7 +1336,7 @@ fi
 
 if test x$has_swig = xyes; then
    > conftest.$ac_ext
-   SWIGINCLUDES=`eval $ac_compiler $CFLAGS -E -Wp,-v conftest.$ac_ext 2>&1 | grep '^ ' | sed -e 's/^ \(.*\) (framework directory)$/-F\1/g' -e 's/^ /-I/g' | tr '\n' ' '`
+   SWIGINCLUDES=`eval $ac_compiler $CFLAGS $CPPFLAGS -E -Wp,-v conftest.$ac_ext 2>&1 | grep '^ ' | sed -e 's/^ \(.*\) (framework directory)$/-F\1/g' -e 's/^ /-I/g' | tr '\n' ' '`
 fi
 
 if test x$has_swig = xyes || test -f $srcdir/unix/xlib-fsi.c; then
@@ -1290,14 +1364,26 @@ then
       AC_CHECK_HEADER(w32api/winbase.h, SWIGLIBS="$SWIGLIBS win32.fs", ,
 #include <w32api/wtypes.h>
 ) ,)
-else
     if test x$has_swig = xyes || test -f $srcdir/unix/gl-fsi.c; then
       AC_CHECK_HEADER(GL/gl.h, 
       AC_CHECK_HEADER(GL/glext.h, SWIGMODULES="$SWIGMODULES gl.fs"
-      AC_CHECK_HEADER(GL/glx.h, SWIGMODULES="$SWIGMODULES glx.fs"
-      SWIGLIBS="$SWIGLIBS opengl.fs", ,), , 
+      SWIGLIBS="$SWIGLIBS gl.fs", ,
 #include <GL/gl.h>
-) ,)
+), )
+    fi
+else
+    if test x$has_swig = xyes || test -f $srcdir/unix/gl-fsi.c; then
+      AC_CHECK_LIB(GL,glBegin,
+      AC_CHECK_HEADER(GL/gl.h, 
+      AC_CHECK_HEADER(GL/glext.h, SWIGMODULES="$SWIGMODULES gl.fs"
+      SWIGLIBS="$SWIGLIBS gl.fs", ,
+#include <GL/gl.h>
+) ,) ,)
+    fi
+    if test x$has_swig = xyes || test -f $srcdir/unix/glx-fsi.c; then
+      AC_CHECK_LIB(GLX,glXCreateWindow,
+      AC_CHECK_HEADER(GL/glx.h, SWIGMODULES="$SWIGMODULES glx.fs"
+      SWIGLIBS="$SWIGLIBS gl.fs", ,),)
     fi
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/gles-fsi.c; then
@@ -1305,7 +1391,7 @@ if test x$has_swig = xyes || test -f $srcdir/unix/gles-fsi.c; then
    AC_CHECK_HEADER(GLES2/gl2.h,
    AC_CHECK_HEADER(GLES2/gl2ext.h, SWIGMODULES="$SWIGMODULES gles.fs"
    AC_CHECK_HEADER(EGL/egl.h, SWIGMODULES="$SWIGMODULES egl.fs"
-   SWIGLIBS="$SWIGLIBS opengles.fs", ,), ,
+   SWIGLIBS="$SWIGLIBS gles.fs egl.fs", ,), ,
 #include <GLES2/gl2.h>
 ) ,))
 fi
@@ -1313,11 +1399,11 @@ if test x$has_swig = xyes || test -f $srcdir/unix/gles3-fsi.c; then
    AC_CHECK_LIB(GLESv3,glClear,
    AC_CHECK_HEADER(GLES3/gl3.h,
    AC_CHECK_HEADER(GLES3/gl3ext.h, SWIGMODULES="$SWIGMODULES gles3.fs"
-   AC_CHECK_HEADER(EGL/egl.h, SWIGLIBS="$SWIGLIBS opengles3.fs", ,), ,
+   AC_CHECK_HEADER(EGL/egl.h, SWIGLIBS="$SWIGLIBS gles3.fs egl.fs", ,), ,
 #include <GLES3/gl3.h>
 ) ,))
-# iOS varaint
 fi
+# iOS varaint
 if test x$has_swig = xyes || test -f $srcdir/unix/ios-gles-fsi.c; then
    AC_CHECK_HEADER(OpenGLES/ES2/gl.h,
    AC_CHECK_HEADER(OpenGLES/ES2/glext.h, SWIGMODULES="$SWIGMODULES ios-gles.fs" SWIGLIBS="$SWIGLIBS opengles.fs", ,
@@ -1332,7 +1418,7 @@ if test x$has_swig = xyes || test -f $srcdir/unix/ios-gles3-fsi.c; then
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/jni-fsi.c; then
    AC_CHECK_HEADER(jni.h, SWIGMODULES="$SWIGMODULES jni.fs"
-		   SWIGLIBS="$SWIGLIBS jnilib.fs", ,)
+		   SWIGLIBS="$SWIGLIBS jni.fs", ,)
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/openvg-fsi.c; then
    AC_CHECK_HEADER(openvg.h, SWIGMODULES="$SWIGMODULES openvg.fs", ,)
@@ -1345,42 +1431,79 @@ if test x$has_swig = xyes || test -f $srcdir/unix/omxal-fsi.c; then
     AC_CHECK_HEADER(OMXAL/OpenMAXAL.h, SWIGMODULES="$SWIGMODULES omxal.fs"
 		    SWIGLIBS="$SWIGLIBS openmax.fs", ,)
 fi
-if test x$has_swig = xyes || test -f $srcdir/unix/pnglib-fsi.c; then
-    AC_CHECK_HEADER(libpng/png.h, SWIGMODULES="$SWIGMODULES pnglib.fs"
-		    SWIGLIBS="$SWIGLIBS png.fs", ,)
+if test x$has_swig = xyes || test -f $srcdir/unix/png16-fsi.c; then
+    AC_CHECK_HEADER(libpng16/png.h, SWIGMODULES="$SWIGMODULES png16.fs"
+		    SWIGLIBS="$SWIGLIBS png16.fs", ,)
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/soil2-fsi.c; then
     AC_CHECK_HEADER(SOIL2.h, SWIGMODULES="$SWIGMODULES soil2.fs"
-		    SWIGLIBS="$SWIGLIBS soil2lib.fs", ,)
+		    SWIGLIBS="$SWIGLIBS soil2.fs", ,)
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/soil-fsi.c; then
     AC_CHECK_LIB(SOIL,SOIL_load_image,
     AC_CHECK_HEADER(SOIL/SOIL.h, SWIGMODULES="$SWIGMODULES soil.fs"
-		    SWIGLIBS="$SWIGLIBS soillib.fs", ,))
+		    SWIGLIBS="$SWIGLIBS soil.fs", ,))
 fi
-if test x$has_swig = xyes || test -f $srcdir/unix/freetype-gl-fsi.c; then
-    AC_CHECK_HEADER(freetype-gl.h, SWIGMODULES="$SWIGMODULES freetype-gl.fs"
-		    SWIGLIBS="$SWIGLIBS freetype-gllib.fs", ,)
+if test x$has_swig = xyes || test -f $srcdir/unix/freetype_gl-fsi.c; then
+    AC_CHECK_HEADER(freetype-gl.h, SWIGMODULES="$SWIGMODULES freetype_gl.fs"
+		    SWIGLIBS="$SWIGLIBS freetype_gl.fs", ,)
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/wayland-fsi.c; then
-   AC_CHECK_HEADER(wayland/wayland-egl.h, SWIGMODULES="$SWIGMODULES wayland.fs"
-		   SWIGLIBS="$SWIGLIBS waylandlib.fs", ,)
+   CPPFLAGS_1="$CPPFLAGS"
+   CPPFLAGS="$CPPFLAGS `pkg-config --cflags wayland-client`"
+   AC_CHECK_LIB(wayland-egl,wl_egl_window_create,
+   AC_CHECK_LIB(wayland-client,wl_display_get_fd,
+   AC_CHECK_HEADER(wayland-egl-core.h, SWIGMODULES="$SWIGMODULES wayland.fs"
+		   SWIGLIBS="$SWIGLIBS waylandlib.fs" SWIGINCLUDES="$SWIGINCLUDES `pkg-config --cflags wayland-client | tr ' ' '\n' | grep ^-I | tr '\n' ' '`", CPPFLAGS="$CPPFLAGS_1", ,)))
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/gps-fsi.c; then
    AC_CHECK_LIB(gps,gps_open,
    AC_CHECK_HEADER(gps.h, SWIGMODULES="$SWIGMODULES gps.fs"
-		   SWIGLIBS="$SWIGLIBS gpslib.fs", ,))
+		   SWIGLIBS="$SWIGLIBS gps.fs", ,))
 fi
 if test x$has_swig = xyes || test -f $srcdir/unix/vulkan-fsi.c; then
    AC_CHECK_LIB(vulkan,vkGetPhysicalDeviceFeatures,
    AC_CHECK_HEADER(vulkan/vulkan.h, SWIGMODULES="$SWIGMODULES vulkan.fs"
-		   SWIGLIBS="$SWIGLIBS vulkanlib.fs", ,))
+		   SWIGLIBS="$SWIGLIBS vulkan.fs", ,))
+fi
+if test x$has_swig = xyes || test -f $srcdir/unix/harfbuzz-fsi.c; then
+   CPPFLAGS_1="$CPPFLAGS"
+   CPPFLAGS="$CPPFLAGS `pkg-config --cflags harfbuzz`"
+   AC_CHECK_LIB(harfbuzz,hb_buffer_create,
+   AC_CHECK_HEADER(harfbuzz/hb.h, SWIGMODULES="$SWIGMODULES harfbuzz.fs"
+		   SWIGLIBS="$SWIGLIBS harfbuzz.fs"
+		   SWIGINCLUDES="$SWIGINCLUDES `pkg-config --cflags harfbuzz | tr ' ' '\n' | grep ^-I | tr '\n' ' '`", ,),
+   AC_CHECK_LIB(harfbuzz,hb_buffer_get_direction,
+   AC_CHECK_HEADER(harfbuzz/hb.h, SWIGMODULES="$SWIGMODULES harfbuzz.fs"
+		   SWIGLIBS="$SWIGLIBS harfbuzz.fs"
+		   SWIGINCLUDES="$SWIGINCLUDES `pkg-config --cflags harfbuzz | tr ' ' '\n' | grep ^-I | tr '\n' ' '`", ,), ,-lpng12 -lfreetype)
+		   ,-lpng16 -lfreetype)
+fi
+if test x$has_swig = xyes || test -f $srcdir/unix/gobject-fsi.c; then
+   CPPFLAGS_1="$CPPFLAGS"
+   CPPFLAGS="$CPPFLAGS `pkg-config --cflags gobject-2.0`"
+   AC_CHECK_LIB(gobject-2.0,g_signal_connect_data,
+   AC_CHECK_HEADER(glib-object.h, SWIGMODULES="$SWIGMODULES gobject.fs"
+		   SWIGLIBS="$SWIGLIBS gobject.fs" SWIGINCLUDES="$SWIGINCLUDES `pkg-config --cflags gobject-2.0 | tr ' ' '\n' | grep ^-I | tr '\n' ' '`", CPPFLAGS="$CPPFLAGS_1",), ,)
+fi
+if test x$has_swig = xyes || test -f $srcdir/unix/gst-fsi.c; then
+   CPPFLAGS_1="$CPPFLAGS"
+   CPPFLAGS="$CPPFLAGS `pkg-config --cflags gstreamer-gl-1.0`"
+   AC_CHECK_LIB(gstreamer-1.0,gst_init,
+   AC_CHECK_HEADER(gst/gst.h, SWIGMODULES="$SWIGMODULES gst.fs"
+		   SWIGLIBS="$SWIGLIBS gst.fs" SWIGINCLUDES="$SWIGINCLUDES `pkg-config --cflags gstreamer-gl-1.0 | tr ' ' '\n' | grep ^-I | tr '\n' ' '`", CPPFLAGS="$CPPFLAGS_1",), ,)
 fi
 
 if test x$has_swig = xno; then
    AC_MSG_WARN([*** Swig without -forth. Building library buildings $SWIGMODULES from tarball.])
+   config_warns="$config_warns
+Swig without -forth feature."
 fi
 AC_SUBST(SWIGMODULES)
+
+#remove duplicates
+SWIGINCLUDES=`echo $SWIGINCLUDES | tr ' ' '\n' | sort -u  | tr '\n' ' '`
+
 AC_SUBST(SWIGINCLUDES)
 AC_SUBST(SWIGLIBS)
 
@@ -1417,7 +1540,6 @@ preforth
 libforth
 gforthker
 engine/Makefile
-engine/libcc.h
 engine/gforth.h
 doc/version.texi
 doc/Makefile
@@ -1436,7 +1558,7 @@ test -d kernel||mkdir kernel
 if test $srcdir != "."; then ln -sf $srcdir/gforth.el .; fi
 $srcdir/mkinstalldirs include/gforth/$PACKAGE_VERSION/$machine
 $srcdir/mkinstalldirs arch/$machine
-ln -sf $PWD/engine/config.h $PWD/engine/libcc.h include/gforth/$PACKAGE_VERSION/$machine]],
+ln -sf $PWD/engine/config.h `cd $srcdir; pwd`/engine/libcc.h include/gforth/$PACKAGE_VERSION/$machine]],
 [PACKAGE_VERSION=$PACKAGE_VERSION
  machine=$machine])
 AC_OUTPUT
@@ -1447,4 +1569,15 @@ if test x$kernel_anti_dependence = x; then
    do
 	cp kernl$i.fi kernl$i.fi-
    done
+fi
+
+# print warnings summary if exist
+
+echo
+if test -z "$config_warns"
+then
+   echo "*** Config summary: everything fine ***"
+else
+   echo "*** Config summary: Warnings exist ***"
+   echo "$config_warns"
 fi

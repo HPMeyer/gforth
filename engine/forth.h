@@ -1,6 +1,6 @@
 /* common header file
 
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -114,12 +114,10 @@ extern void* (*realloc_l)(void* addr, size_t size);
 #define DODEFER	4
 #define DOFIELD	5
 #define DOVAL	6
-#define DODOES	7
+#define DODOES  7
 #define DOABICODE	8
 #define DOSEMIABICODE   9
-#define DOEXTRA	10
-#define DODOESXT 11
-#define DOER_MAX        11
+#define DOER_MAX 9
 
 #include "machine.h"
 
@@ -303,7 +301,7 @@ typedef union {
 typedef Label *Xt;
 
 /* PFA gives the parameter field address corresponding to a cfa */
-#define PFA(cfa)	(((Cell *)cfa)+2)
+#define PFA(cfa)	(((Cell *)cfa)+1)
 /* PFA1 is a special version for use just after a NEXT1 */
 #define PFA1(cfa)	PFA(cfa)
 /* CODE_ADDRESS is the address of the code jumped to through the code field */
@@ -316,17 +314,22 @@ typedef Label *Xt;
 #  define DOES_CA ((Label)&xts[DODOES])
 #endif /* defined(DOUBLY_INDIRECT) */
 
-#define DOES_CODE1(cfa)	 ((Xt *)(cfa[1]))
-#define DOES_CODEXT(cfa) ((Xt)(cfa[1]))
+#define DOES_CODE1(cfa)	 ((Xt *)(((Cell *)cfa)[1]))
+#define DOES_CODEXT(cfa) ((Xt)(((Cell *)cfa)[1]))
+
+/* Extra is used for DOES */
+#define VTLINK 0
+#define VTCOMPILE 1
+#define VTTO 2
+#define VT2INT 3
+#define VT2COMP 4
+#define VTDEFER 5
+#define VTEXTRA 6
+#define EXTRA_CODE(cfa) ((Xt *)(((Cell **)cfa)[-1][VTEXTRA]))
+#define EXTRA_CODEXT(cfa) ((Xt)(((Cell **)cfa)[-1][VTEXTRA]))
 
 /* MAKE_CF creates an appropriate code field at the cfa;
    ca is the code address */
-#define VTLINK 0
-#define VTCOMPILE 1
-#define VTLIT 2
-#define VTEXTRA 3
-#define VTTO 4
-#define EXTRA_CODE(cfa) ((Xt *)(((Cell **)cfa)[-1][VTEXTRA]))
 #define MAKE_CF(cfa,ca) ((*(Label *)(cfa)) = ((Label)ca))
 /* make a code field for a defining-word-defined word */
 
@@ -335,11 +338,15 @@ typedef Label *Xt;
 #define CF_NIL	-1
 
 #ifndef FLUSH_ICACHE
+#ifdef HAVE___BUILTIN___CLEAR_CACHE
+#define FLUSH_ICACHE(addr,size) __builtin___clear_cache((void*)(addr),(void*)(addr)+(size_t)(size))
+#else /* !defined(HAVE___BUILTIN___CLEAR_CACHE) */
 #warning flush-icache probably will not work (see manual)
 #	define FLUSH_ICACHE(addr,size)
 #warning no FLUSH_ICACHE, turning off dynamic native code by default
 #undef NO_DYNAMIC_DEFAULT
 #define NO_DYNAMIC_DEFAULT 1
+#endif /* !defined(HAVE___BUILTIN___CLEAR_CACHE) */
 #endif
 
 #ifndef CHECK_PRIM
@@ -429,6 +436,12 @@ typedef struct _hash128 {
 
 typedef struct {
   Cell magic;
+  /* exception parts here, not in user area */
+  Cell *handler;
+  Cell first_throw;
+  Cell *wraphandler; /* experimental */
+  jmp_buf * throw_jumpptr;
+  /* pointers and user area */
   Cell *spx;
   Cell *rpx;
   Address lpx;
@@ -436,7 +449,6 @@ typedef struct {
   user_area* upx;
   Xt *s_ip;
   Cell *s_rp;
-  jmp_buf * throw_jumpptr;
 } stackpointers;
 
 extern PER_THREAD stackpointers gforth_SPs;
@@ -557,6 +569,7 @@ extern int offset_image;
 extern int die_on_signal;
 extern int ignore_async_signals;
 extern UCell pagesize;
+extern Address dictguard;
 extern ImageHeader *gforth_header;
 extern Label *vm_prims;
 extern Label *xts;

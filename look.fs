@@ -1,6 +1,6 @@
 \ LOOK.FS      xt -> lfa                               22may93jaw
 
-\ Copyright (C) 1995,1996,1997,2000,2003,2007,2011,2012,2013,2014,2015 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,2000,2003,2007,2011,2012,2013,2014,2015,2017 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -34,21 +34,9 @@ decimal
 
 : xt= ( ca xt -- flag )
     \G compare threaded-code cell with the primitive xt
-    @ swap threading-method 1 umin 0 +DO  ['] @ catch drop  LOOP  = ;
-
-: search-name  ( xt startlfa -- nt|0 )
-    \ look up name of primitive with code at xt
-    swap
-    >r false swap
-    BEGIN
-	>link @ dup
-    WHILE
-	    dup name>int
-	    r@ = IF
-		nip dup
-	    THEN
-    REPEAT
-    drop rdrop ;
+    first-throw @ >r first-throw off
+    @ swap threading-method 1 umin 0 +DO  ['] @ catch drop  LOOP  =
+    r> first-throw ! ;
 
 : threaded>xt ( ca -- xt|0 )
     \G For the code address ca of a primitive, find the xt (or 0).
@@ -71,6 +59,20 @@ has? ec [IF]
 
 has? rom 
 [IF]
+: search-name  ( xt startlfa -- nt|0 )
+    \ look up name of primitive with code at xt
+    swap
+    >r false swap
+    BEGIN
+	>link @ dup
+    WHILE
+	    dup name>int
+	    r@ = IF
+		nip dup
+	    THEN
+    REPEAT
+    drop rdrop ;
+
 : prim>name ( xt -- nt|0 )
     forth-wordlist @ search-name ;
 
@@ -91,31 +93,23 @@ has? rom
 
 : PrimStart ['] true >head-noprim ;
 
-: prim>name ( xt -- nt|0 )
-    PrimStart search-name ;
-
-: look ( xt -- lfa flag )
-    dup in-dictionary?
-    IF
-	>head-noprim dup ['] ??? <>
-    ELSE
-	prim>name dup 0<>
-    THEN ;
+: look ( xt -- nt flag )
+    dup xt? ;
 
 [THEN]
 [THEN]
 
-: threaded>name ( ca -- nt|0 )
-    threaded>xt prim>name ;
-
-: >name ( xt -- nt|0 ) \ gforth to-name
-    \G tries to find the name token @var{nt} of the word represented
-    \G by @var{xt}; returns 0 if it fails.  This word is not
-    \G absolutely reliable, it may give false positives and produce
-    \G wrong nts.
+: >name ( xt -- nt ) \ gforth to-name
+    \G The primary name token @var{nt} of the word represented by
+    \G @var{xt}.  As of Gforth 1.0, every xt has a primary nt, but other
+    \G named words may have the same interpretation sematics xt.
     look and ;
 
+: threaded>name ( ca -- nt|0 )
+    threaded>xt >name ;
+
 ' >name ALIAS >head \ gforth to-head
+' >name Alias prim>name
 \G another name of @code{>name}
 
 \ print recognizer stack

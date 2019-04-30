@@ -1,6 +1,6 @@
 \ simple CPU feature check for Linux/Android
 
-\ Copyright (C) 2016 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -17,21 +17,23 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
+Variable cpuflags
+
 e? os-type s" linux" string-prefix?
 e? os-type s" cygwin" string-prefix? or [IF]
-    Variable cpuflags
-    
+    machine s" arm" string-prefix? [IF] s" Features" [ELSE]
+	machine s" amd64" str= machine s" 386" str= or [IF] s" flags" [ELSE]
+	    machine s" mips" str= [IF] s" isa" [ELSE]
+		machine s" mipsel" str= [IF] s" cpu model" [ELSE]
+		    s" cpu" [THEN] [THEN] [THEN] [THEN]
+    2constant cpu-string
+    : parse-cpuline ( addr u -- )
+	':' parse BEGIN dup WHILE 1- 2dup + c@ bl > UNTIL  1+  THEN
+	[ cpu-string ] SLiteral str= IF
+	    source >in @ /string cpuflags $!  THEN ;
     : get-cpuflags ( -- )
 	s" /proc/cpuinfo" r/o open-file throw
-	[: BEGIN  refill  WHILE
-		  ':' parse BEGIN dup WHILE 1- 2dup + c@ bl > UNTIL  1+  THEN
-		  [ machine s" arm" string-prefix? ] [IF] s" Features" [ELSE]
-		      [ machine s" amd64" str= machine s" 386" str= or ] [IF] s" flags" [ELSE]
-			  [ machine s" mips" str= ] [IF] s" isa" [ELSE]
-			      [ machine s" mipsel" str= ] [IF] s" cpu model" [ELSE]
-				  s" cpu" [THEN] [THEN] [THEN] [THEN]
-		  str= IF
-		      source >in @ /string cpuflags $!  THEN
+	[: BEGIN  refill  WHILE  parse-cpuline
 	  REPEAT ;] execute-parsing-file ;
     
     : string-cpu? ( addr u -- flag )

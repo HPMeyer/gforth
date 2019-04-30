@@ -1,6 +1,6 @@
 /* gforth library header
 
-  Copyright (C) 2016 Free Software Foundation, Inc.
+  Copyright (C) 2016,2017 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -38,6 +38,9 @@ typedef struct {
   Float* fp0;
   Address lp0;
   Xt *throw_entry;
+  Cell *handler;
+  Cell first_throw;
+  Cell *wraphandler; /* experimental */
 } user_area;
 
 typedef struct {

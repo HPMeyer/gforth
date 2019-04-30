@@ -1,6 +1,6 @@
 \ kernel.fs    GForth kernel                        17dec92py
 
-\ Copyright (C) 1995,1998,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1998,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -96,8 +96,8 @@ has? ec has? primcentric 0= and [IF]
 
 \ here is used for pad calculation!
 
-: dp    ( -- addr ) \ gforth
-    dpp @ ;
+: dpp   ( -- addr ) \ gforth
+    uaddr dp ;
 : here  ( -- addr ) \ core
     \G Return the address of the next free location in data space.
     dp @ ;
@@ -144,28 +144,32 @@ has? ec has? primcentric 0= and [IF]
 
 \ (word)                                               22feb93py
 
-: scan   ( addr1 n1 char -- addr2 n2 ) \ gforth
-    \G skip all characters not equal to char
-    >r
-    BEGIN
-	dup
-    WHILE
-	over c@ r@ <>
-    WHILE
-	1 /string
-    REPEAT  THEN
-    rdrop ;
-: skip   ( addr1 n1 char -- addr2 n2 ) \ gforth
-    \G skip all characters equal to char
-    >r
-    BEGIN
-	dup
-    WHILE
-	over c@ r@  =
-    WHILE
-	1 /string
-    REPEAT  THEN
-    rdrop ;
+[IFUNDEF] scan
+    : scan   ( addr1 n1 char -- addr2 n2 ) \ gforth
+	\G skip all characters not equal to char
+	>r
+	BEGIN
+	    dup
+	WHILE
+		over c@ r@ <>
+	    WHILE
+		    1 /string
+	    REPEAT  THEN
+	rdrop ;
+[THEN]
+[IFUNDEF] skip
+    : skip   ( addr1 n1 char -- addr2 n2 ) \ gforth
+	\G skip all characters equal to char
+	>r
+	BEGIN
+	    dup
+	WHILE
+		over c@ r@  =
+	    WHILE
+		    1 /string
+	    REPEAT  THEN
+	rdrop ;
+[THEN]
 
 \ digit?                                               17dec92py
 
@@ -275,8 +279,8 @@ defer ?warning ( f xt -- )
 
 :noname ( f xt -- )
     \ just a very basic version
-    swap if
-	>stderr ." warning:" execute exit then
+    swap warnings @ and if
+	>stderr cr ." warning: " execute exit then
     drop ;
 is ?warning
 

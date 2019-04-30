@@ -10,7 +10,8 @@ Architecture: any
 Multi-Arch: same
 Depends: libltdl7, gforth-common (= @DEBVERSION@)
 Recommends: gforth-lib (= @DEBVERSION@)
-Suggests: libtool, libtool-bin, libffi6 | libffi5, build-essential, gcc
+Suggests: libtool, libtool-bin, libffi6 | libffi5, build-essential, gcc, freetype-gl, libsoil2
+License: GPLv3
 Description: GNU Forth
  Gforth is the Forth implementation of the GNU project, providing all
  features of the ANS Forth (Forth-94) and the Forth-2012 standards.
@@ -22,11 +23,52 @@ Package: gforth-common
 Version: @DEBVERSION@
 Architecture: all
 Multi-Arch: foreign
+Recommends: gforth-minos2, gforth-doc
+License: GPLv3
 Description: GNU Forth
  Gforth is the Forth implementation of the GNU project, providing all
  features of the ANS Forth (Forth-94) and the Forth-2012 standards.
  .
  This is the architecture independent part
+
+Package: gforth-info
+Version: @DEBVERSION@
+Architecture: all
+Multi-Arch: foreign
+Provides: gforth-doc
+Priority: optional
+License: GFDL 1.3
+Description: GNU Forth
+ Gforth is the Forth implementation of the GNU project, providing all
+ features of the ANS Forth (Forth-94) and the Forth-2012 standards.
+ .
+ This is the documentation in info format
+
+Package: gforth-html
+Version: @DEBVERSION@
+Architecture: all
+Multi-Arch: foreign
+Provides: gforth-doc
+Priority: extra
+License: GFDL 1.3
+Description: GNU Forth
+ Gforth is the Forth implementation of the GNU project, providing all
+ features of the ANS Forth (Forth-94) and the Forth-2012 standards.
+ .
+ This is the documentation in html format
+
+Package: gforth-pdf
+Version: @DEBVERSION@
+Architecture: all
+Multi-Arch: foreign
+Provides: gforth-doc
+Priority: extra
+License: GFDL 1.3
+Description: GNU Forth
+ Gforth is the Forth implementation of the GNU project, providing all
+ features of the ANS Forth (Forth-94) and the Forth-2012 standards.
+ .
+ This is the documentation in PDF format
 
 Package: gforth-lib
 Version: @DEBVERSION@
@@ -61,3 +103,49 @@ Description: GNU Forth
  features of the ANS Forth (Forth-94) and the Forth-2012 standards.
  .
  This package contains the links to the architecture specific binaries
+
+Package: gforth-gles-dependencies
+Version: @DEBVERSION@
+Architecture: all
+Provides: gforth-opengl
+Depends: libgles2, libgl1-mesa-dri
+Recommends: libegl1 | libegl1-mesa
+Description: GNU Forth
+ OpenGL ES dependency meta-package
+
+Package: gforth-gl-dependencies
+Version: @DEBVERSION@
+Architecture: all
+Provides: gforth-opengl
+Depends: libglx0, libgl1, libgl1-mesa-dri
+Description: GNU Forth
+ OpenGL dependency meta-package
+
+Package: gforth-noto-fonts
+Version: @DEBVERSION@
+Architecture: all
+Provides: gforth-fonts
+Depends: fonts-noto, fonts-noto-emoji, fonts-liberation | liberation-fonts
+Recomments: fonts-noto-cjk
+Description: GNU Forth
+ Noto fonts dependency meta-package
+
+Package: gforth-liberation-fonts
+Version: @DEBVERSION@
+Architecture: all
+Provides: gforth-fonts
+Depends: fonts-liberation | liberation-fonts, fonts-arphic-gkai00mp
+Description: GNU Forth
+ Liberation fonts dependency meta-package
+
+Package: gforth-minos2
+Version: @DEBVERSION@
+Architecture: all
+Multi-Arch: foreign
+Depends: gforth (= @DEBVERSION@), gforth-opengl, freetype-gl, libsoil2, gforth-fonts
+Recommends: fonts-emoji, fonts-awesome
+Description: GNU Forth Minos2 GUI
+ Gforth is the Forth implementation of the GNU project, providing all
+ features of the ANS Forth (Forth-94) and the Forth-2012 standards.
+ .
+ This package contains the minos2 GUI stuff, and all the necessary dependencies.

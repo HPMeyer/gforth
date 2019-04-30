@@ -1,7 +1,7 @@
 /*
   This is the machine-specific part for Intel ia64 compatible processors
 
-  Copyright (C) 2000,2003,2005,2007 Free Software Foundation, Inc.
+  Copyright (C) 2000,2003,2005,2007,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -32,5 +32,7 @@
 #include "../generic/machine.h"
 #include <sys/types.h>
 
+#ifndef FLUSH_ICACHE
 extern void flush_icache_block(caddr_t eaddr, size_t count);
-#define FLUSH_ICACHE(addr,size) flush_icache_block(addr, size)
+# define FLUSH_ICACHE(addr,size) flush_icache_block(addr, size)
+#endif

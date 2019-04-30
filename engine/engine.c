@@ -26,6 +26,7 @@
 
 #include "config.h"
 #include "forth.h"
+#include "symver.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -96,11 +97,9 @@ extern int debug;
 extern int gforth_memcmp(const char * s1, const char * s2, size_t n);
 extern Char *gforth_memmove(Char * dest, const Char* src, Cell n);
 extern Char *gforth_memset(Char * s, Cell c, UCell n);
-extern Char *gforth_memcpy(Char * dest, const Char* src, Cell n);
 #define memcmp(s1,s2,n) gforth_memcmp(s1,s2,n)
 #define memmove(a,b,c) gforth_memmove(a,b,c)
 #define memset(a,b,c) gforth_memset(a,b,c)
-#define memcpy(a,b,c) gforth_memcpy(a,b,c)
 #endif
 
 #define NEWLINE	'\n'

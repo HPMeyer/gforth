@@ -1,6 +1,6 @@
 \ implementation of Forth 200x structures
 
-\ Copyright (C) 2007,2012,2014,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 2007,2012,2014,2015,2016,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -36,9 +36,9 @@ Defer +field
 \ exactly field-like behavior.  Objects, locals, etc.
 \ Allow them to plug into +field.
 
-: standard:field ( -- )
-    \g set +field to standard behavior
-    ['] standard+field IS +field ;
+defer standard:field ( -- )
+\g set +field to standard behavior
+:noname  ['] standard+field IS +field ; is standard:field
 
 standard:field
 

@@ -1,6 +1,6 @@
 /* uncompress using zlib
 
-  Copyright (C) 2012,2013,2014,2015 Free Software Foundation, Inc.
+  Copyright (C) 2012,2013,2014,2015,2017,2018 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -17,6 +17,7 @@
   You should have received a copy of the GNU General Public License
   along with this program; if not, see http://www.gnu.org/licenses/. */
 
+#include "config.h"
 #include <stdio.h>
 #include <zlib.h>
 #include <sys/stat.h>
@@ -49,34 +50,44 @@ void zexpand(char * zfile)
     // LOGI("File %c: %s size %d\n", filename[0], filename+1, filesize);
 
     if((len1==sizebuf) && (len2==sizeof(int32_t))) {
-      char filebuf[filesize];
+      char *filebuf=malloc(filesize);
       int len3=(filesize==0) ? 0 : gzread(file, filebuf, filesize);
       
       if((len3==filesize)) {
 	switch(filename[0]) {
 	case 'f': // file
 	  LOGI("file %s, size %d\n", filename+1, filesize);
-	  out=fopen(filename+1, "w+");
-	  fwrite(filebuf, filesize, 1, out);
-	  if(ferror(out)) {
-	    LOGE("write error on file %s: %s\n", filename+1, strerror(errno));
+	  if(NULL==(out=fopen(filename+1, "w+"))) {
+	    LOGE("fopen error on file %s: %s\n", filename+1, strerror(errno));
+	  } else {
+	    fwrite(filebuf, filesize, 1, out);
+	    if(ferror(out)) {
+	      LOGE("write error on file %s: %s\n", filename+1, strerror(errno));
+	    }
+	    fclose(out);
 	  }
-	  fclose(out);
 	  break;
 	case 'd': // directory
 	  LOGI("dir %s\n", filename+1);
-	  mkdir(filename+1, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	  if(mkdir(filename+1, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
+	    LOGE("mkdir(%s) failed: %s\n", filename+1, strerror(errno));
+	  }
 	  break;
 	case 'h': // hard link
 	  LOGI("hardlink %s\n", filename+1);
-	  link(filebuf, filename+1);
+	  if(link(filebuf, filename+1)) {
+	    LOGE("link(%s) failed: %s\n", filename+1, strerror(errno));
+	  }
 	  break;
 	case 's': // symlink
 	  LOGI("symlink %s\n", filename+1);
-	  symlink(filebuf, filename+1);
+	  if(symlink(filebuf, filename+1)) {
+	    LOGE("symlink(%s) failed: %s\n", filename+1, strerror(errno));
+	  }
 	  break;
 	}
       }
+      free(filebuf);
     }
   }
   gzclose(file);

@@ -1,6 +1,6 @@
 #Makefile for Gforth
 
-#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016 Free Software Foundation, Inc.
+#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -53,12 +53,14 @@ EXTRAS= @EXTRAS@
 HOST= @HOSTPREFIX@
 EXTRAPREFIX= @EXTRAPREFIX@
 FAST= @FAST@
+PACKAGE_TARNAME= @PACKAGE_TARNAME@
 
 # ------------	Install Directories
 
 package = $(DESTDIR)
 VPATH = @srcdir@:.
 prefix = @prefix@
+docdir= @docdir@
 exec_prefix = @exec_prefix@
 srcdir = @srcdir@
 top_srcdir = @top_srcdir@
@@ -69,11 +71,12 @@ datarootdir = @datarootdir@
 datadir = $(package)@datadir@
 #read-only architecture-dependent non-ascii files
 libdir = $(package)@libdir@
-libccdir = $(subst $(package),,$(libdir)/gforth/$(VERSION)/$(machine)/libcc-named/)
+libccdir = $(subst $(package),,$(libdir)/gforth/$(VERSION)/$(machine)/libcc-named)
 buildccdir = lib/gforth/$(VERSION)/$(machine)/libcc-named
 includedir = $(package)@includedir@
 infodir = $(package)@infodir@
 htmldir = $(package)@htmldir@
+pdfdir = $(package)@pdfdir@
 mandir = $(package)@mandir@
 man1dir= $(mandir)/man1
 man1ext= .1
@@ -136,7 +139,7 @@ DOSTRIP = true
 
 # -------------	Compiler Flags
 
-XCFLAGS	= @CFLAGS@
+XCFLAGS	= @CFLAGS@ @ANDROID_EXTRA@
 XDEFINES = @DEFS@
 SWITCHES = $(XCFLAGS) $(XDEFINES) $(OPTDEFINES) #-DNDEBUG #turn off assertions
 ENGINE_FLAGS = @ENGINE_FLAGS@ -fno-defer-pop -fcaller-saves
@@ -165,7 +168,8 @@ INSTALLDIRS = kernel kernel-ec doc asm ec test test/fp \
 	arch/arm arch/arm64 arch/r8c arch/lm32
 INSTALL_LIBDIRS = unix
 
-INCLUDES = engine/forth.h engine/threaded.h engine/io.h engine/longlong.h
+INCLUDES = engine/forth.h engine/threaded.h engine/io.h engine/longlong.h \
+	engine/symver.h
 
 KERN_SRC = \
 	mach32b.fs mach32l.fs mach64b.fs mach64l.fs \
@@ -180,6 +184,7 @@ KERN_SRC = \
 	kernel/paths.fs \
 	kernel/kernel.fs \
 	kernel/main.fs \
+	kernel/memory.fs \
 	kernel/prim0.fs \
 	search.fs \
 	kernel/quotes.fs \
@@ -193,6 +198,7 @@ KERN_SRC = \
 	kernel/recognizer.fs \
 	kernel/io.fs \
 	kernel/input.fs \
+	kernel/input-class.fs \
 	kernel/license.fs \
 	kernel/nio.fs \
 	kernel/saccept.fs \
@@ -230,6 +236,7 @@ EC_SRC = $(KERN_EC_SRC) \
 	build-ec.in
 
 GFORTH_FI_SRC1=\
+	ansi.fs \
 	assert.fs \
 	backtrac.fs \
 	blocked.fb \
@@ -243,6 +250,7 @@ GFORTH_FI_SRC1=\
 
 GFORTH_FI_SRC2=\
 	savesys.fs \
+	closures.fs \
 	environ.fs \
 	errors.fs \
 	exboot.fs \
@@ -255,14 +263,18 @@ GFORTH_FI_SRC2=\
 	history.fs \
 	intcomp.fs \
 	i18n.fs \
+	iloops.fs \
 	libcc.fs \
 	locals.fs \
+	locate1.fs \
 	look.fs \
 	mkdir.fs \
+	obsolete.fs \
 	prelude.fs \
 	quotes.fs \
-	quotedstring.fs \
-	parsedto.fs \
+	rec-string.fs \
+	rec-to.fs \
+	rec-tick.fs \
 	recognizer2.fs \
 	search.fs \
 	see.fs \
@@ -280,12 +292,14 @@ GFORTH_FI_SRC2=\
 	tasker.fs \
 	table.fs \
 	termsize.fs \
+	user-object.fs \
 	utf-8.fs \
 	vt100.fs \
 	vt100key.fs \
 	wordinfo.fs \
 	gforthrc.fs \
 	options.fs \
+	smartdots.fs \
 	arch/386/asm.fs arch/386/disasm.fs \
 	arch/amd64/asm.fs arch/amd64/disasm.fs \
 	arch/alpha/asm.fs arch/alpha/disasm.fs arch/alpha/testasm.fs\
@@ -313,78 +327,78 @@ SWIGMODULES = @SWIGMODULES@
 SWIGLIBS = @SWIGLIBS@
 SWIG_WRAP = $(patsubst %.fs, unix/%-fsi.c, $(SWIGMODULES))
 
-LIBCC_SRC = cstr.fs unix/socket.fs unix/pthread.fs unix/mmap.fs unix/serial.fs \
-	unix/filestat.fs unix/libc.fs unix/time.fs $(patsubst %, unix/%, $(SWIGLIBS))
+LIBCC_SRC1 = cstr.fs unix/socket.fs unix/pthread.fs unix/mmap.fs	\
+	unix/serial.fs unix/filestat.fs unix/libc.fs unix/time.fs
 
-UNIXLIBS_SRC = unix/x.fs unix/opengl.fs unix/opengles.fs		\
-	unix/opengles3.fs unix/jnilib.fs unix/soillib.fs		\
-	unix/soil2lib.fs unix/freetype-gllib.fs unix/android.fs		\
-	unix/openmax.fs unix/cpu.fs unix/png.fs unix/waylandlib.fs	\
-	unix/gpslib.fs unix/vulkanlib.fs
+LIBCC_SRC = $(patsubst %, unix/%, $(SWIGLIBS))
 
-SWIG_SRC = unix/androidlib.i unix/egl.i unix/gles.i unix/gles3.i	\
-	unix/gl.i unix/glx.i unix/jni.i unix/omxal.i unix/openvg.i	\
-	unix/pnglib.i unix/soil.i unix/soil2.i unix/xlib.i		\
-	unix/ios-gles.i unix/ios-gles3.i unix/freetype-gl.i		\
-	unix/wingdi.i unix/winuser.i unix/wayland.i unix/gps.i		\
-	unix/vulkan.i
+UNIXLIBS_SRC = unix/x.fs unix/opengl.fs unix/opengles.fs unix/opengles3.fs \
+	unix/jnilib.fs unix/soillib.fs unix/soil2lib.fs			   \
+	unix/freetype-gllib.fs unix/android.fs unix/openmax.fs unix/cpu.fs \
+	unix/png.fs unix/waylandlib.fs unix/gpslib.fs unix/vulkanlib.fs	   \
+	unix/harfbuzzlib.fs unix/gstlib.fs
+
+SWIG_SRC = unix/androidlib.i unix/egl.i unix/gles.i unix/gles3.i unix/gl.i    \
+	unix/glx.i unix/jni.i unix/omxal.i unix/openvg.i unix/png16.i	      \
+	unix/soil.i unix/soil2.i unix/xlib.i unix/ios-gles.i unix/ios-gles3.i \
+	unix/freetype_gl.i unix/wingdi.i unix/winuser.i unix/wayland.i	      \
+	unix/gps.i unix/vulkan.i unix/harfbuzz.i unix/gobject.i unix/gst.i
 
 EXTRA_DOC = code.fs objects.fs oof.fs moofglos.fs regexp.fs fft.fs \
-	@NO_CROSS@ $(LIBCC_SRC) mkdir.fs cilk.fs
+	@NO_CROSS@ mkdir.fs cilk.fs coverage.fs $(LIBCC_SRC)
 
 LIBCC_DIST_SRC = $(SWIG_SRC) unix/test.i unix/Makefile.in unix/doexec	\
 	unix/doprep
 
-LIBCC_FORTH_SRC = libffi.fs fflib.fs $(LIBCC_SRC) $(UNIXLIBS_SRC)
+LIBCC_FORTH_SRC = libffi.fs fflib.fs $(UNIXLIBS_SRC) $(LIBCC_SRC1)
 LIBCC_GEN_SRC = unix/stat.fs $(patsubst %, unix/%, $(SWIGMODULES))
 
-LIBCC_BUILD_SRC = @LIBCC_BUILD_SRC@ $(LIBCC_SRC)
-LIBCC_BUILD_LA = $(patsubst %.fs,$(buildccdir)/libgf%.la,$(shell echo $(LIBCC_BUILD_SRC) | sed -e s,unix/,,g))
+LIBCC_BUILD_SRC = $(LIBCC_SRC) @LIBCC_BUILD_SRC@
+LIBCC_BUILD_LA = $(patsubst %.fs,$(buildccdir)/libgf%.la,$(shell echo $(LIBCC_BUILD_SRC) $(LIBCC_SRC1) test/libcc.fs | sed -e s,unix/,,g))
 
 LIBCC_BUILD_NOEC = @NO_CHECKX@ $(LIBCC_BUILD_SRC)
 
-MINOS2_SRC = minos2/gl-helper.fs minos2/gl-terminal.fs			\
-	minos2/jpeg-exif.fs minos2/linux-gl.fs minos2/soil-texture.fs	\
-	minos2/gl-sample.fs minos2/gl-slideshow.fs			\
-	minos2/ftgl-helper.fs minos2/ftgl-sample.fs minos2/widgets.fs	\
-	minos2/widgets-test.fs minos2/mts-tools.fs			\
-	minos2/mkv-tools.fs minos2/omx-example.fs minos2/mkv-tags.fs
+MINOS2_SRC = gl-helper.fs gl-terminal.fs jpeg-exif.fs linux-gl.fs	    \
+	wayland-gl.fs soil-texture.fs gl-sample.fs gl-slideshow.fs	    \
+	ftgl-helper.fs ftgl-sample.fs widgets.fs actors.fs x11-actors.fs    \
+	android-actors.fs wayland-actors.fs widgets-test.fs presentation.fs \
+	mts-tools.fs mkv-tools.fs omx-example.fs mkv-tags.fs		    \
+	android-recorder.fs animation.fs need-x.fs font-style.fs	    \
+	text-style.fs gst-helper.fs plot.fs md-viewer.fs md-test.fs
 
-MINOS2_BIN = minos2/ascii.png minos2/button.png minos2/button2.png	\
-	minos2/button3.png
+MINOS2_BIN = ascii.png button.png button2.png button3.png bad-gateway.png \
+	net2o-minos2.png lbubble.png rbubble.png white.png
 
-FORTH_SRC = $(KERN_SRC) $(GFORTH_FI_DIST_SRC) $(EC_SRC)			\
-	$(LIBCC_FORTH_SRC) $(MINOS2_SRC) $(MINOS2_BIN) ans-report.fs	\
-	ansi.fs answords.fs colorize.fs comp-i.fs complex.fs		\
-	depth-changes.fs dosekey.fs doskey.fs ds2texi.fs envos.dos	\
-	envos.os2 etags.fs fft.fs filedump.fs fi2c.fs forward.fs	\
-	fsl-util.4th fsl-util.fs glosgen.fs gray.fs httpd.fs		\
-	install-tags.fs make-app.fs doc/makedoc.fs locate.fs		\
-	locate1.fs more.fs onebench.fs fft-bench.fs other.fs		\
-	prims2x.fs prims2x0.6.2.fs proxy.fs random.fs regexp.fs		\
-	regexp-test.fs sokoban.fs string.fs table.fs tags.fs tt.fs	\
-	quotations.fs unbuffer.fs wordsets.fs 2012words.fs		\
-	test/tester.fs test/ttester.fs test/coretest.fs			\
-	test/postpone.fs test/dbltest.fs test/string.fs test/float.fs	\
-	test/search.fs test/gforth.fs test/other.fs test/signals.fs	\
-	test/checkans.fs test/primtest.fs test/coreext.fs		\
-	test/deferred.fs test/coremore.fs test/gforth-nofast.fs		\
-	test/libcc.fs test/macros.fs test/fp/ak-fp-test.fth		\
-	test/fp/fatan2-test.fs test/fp/fpio-test.4th			\
-	test/fp/fpzero-test.4th test/fp/ieee-arith-test.fs		\
-	test/fp/ieee-fprox-test.fs test/fp/paranoia.4th			\
-	test/fp/readme-fp.txt test/fp/runfptests.fth			\
-	test/fp/to-float-test.4th test/fp/ttester.fs bubble.fs		\
-	siev.fs matrix.fs fib.fs oof.fs oofsampl.fs objects.fs		\
-	objexamp.fs mini-oof.fs moof-exm.fs moofglos.fs fixpath.fs	\
-	mini-oof2.fs moof2-example.fs user-object.fs callable.fs	\
-	add.fs lib.fs oldlib.fs sieve.fs list.fs endtry-iferror.fs	\
-	recover-endtry.fs smartdots.fs unix/terminal-server.fs		\
-	unix/jni-helper.fs unix/jni-tools.fs unix/jni-media.fs		\
-	unix/jni-location.fs unix/sensors.fs unix/gdi.fs unix/user.fs	\
-	unix/win32.fs date.fs script.fs wf.fs traceall.fs		\
-	rec-scope.fs rec-env.fs notfound.fs utf16.fs archive.fs		\
-	cilk.fs sections.fs fixfiles.fs minos2/android-recorder.fs
+TEST_SRC = tester.fs ttester.fs coretest.fs postpone.fs dbltest.fs string.fs \
+	float.fs search.fs gforth.fs forward.fs other.fs signals.fs checkans.fs \
+	primtest.fs coreext.fs deferred.fs coremore.fs gforth-nofast.fs	     \
+	libcc.fs macros.fs fp/ak-fp-test.fth fp/fatan2-test.fs		     \
+	fp/fpio-test.4th fp/fpzero-test.4th fp/ieee-arith-test.fs	     \
+	fp/ieee-fprox-test.fs fp/paranoia.4th fp/readme-fp.txt		     \
+	fp/runfptests.fth fp/to-float-test.4th fp/ttester.fs
+
+UNIX_SRC = terminal-server.fs jni-helper.fs jni-tools.fs jni-media.fs	\
+	jni-location.fs sensors.fs gdi.fs user.fs win32.fs
+
+FORTH_SRC = $(KERN_SRC) $(GFORTH_FI_DIST_SRC) $(EC_SRC) $(LIBCC_FORTH_SRC)    \
+	$(patsubst %, minos2/%, $(MINOS2_SRC)) $(patsubst %, minos2/%,	      \
+	$(MINOS2_BIN)) ans-report.fs ansi.fs answords.fs colorize.fs	      \
+	comp-i.fs complex.fs depth-changes.fs dosekey.fs doskey.fs ds2texi.fs \
+	envos.dos envos.os2 etags.fs fft.fs filedump.fs fi2c.fs forward.fs    \
+	fsl-util.4th fsl-util.fs glosgen.fs gray.fs httpd.fs install-tags.fs  \
+	make-app.fs doc/makedoc.fs locate.fs locate1.fs more.fs onebench.fs   \
+	fft-bench.fs other.fs prims2x.fs prims2x0.6.2.fs proxy.fs random.fs   \
+	regexp.fs regexp-test.fs sokoban.fs string.fs table.fs tags.fs tt.fs  \
+	quotations.fs unbuffer.fs wordsets.fs 2012words.fs $(patsubst %,      \
+	test/%, $(TEST_SRC)) bubble.fs siev.fs matrix.fs fib.fs oof.fs	      \
+	oofsampl.fs objects.fs objexamp.fs mini-oof.fs moof-exm.fs	      \
+	moofglos.fs fixpath.fs mini-oof2.fs moof2-example.fs callable.fs      \
+	add.fs lib.fs oldlib.fs sieve.fs list.fs endtry-iferror.fs	      \
+	recover-endtry.fs $(patsubst %, unix/%, $(UNIX_SRC)) date.fs	      \
+	script.fs wf.fs traceall.fs rec-scope.fs rec-env.fs rec-meta.fs	      \
+	notfound.fs utf16.fs archive.fs cilk.fs sections.fs fixfiles.fs	      \
+	bits.fs reverse-words.fs config.fs set-compsem.fs coverage.fs	      \
+	tokenize.fs
 
 COMPAT = compat/README \
 	compat/anslocal.fs \
@@ -401,7 +415,8 @@ COMPAT = compat/README \
 	compat/struct.fs \
 	compat/vocabulary.fs \
 	compat/stagediv.fs \
-	compat/memory.4th
+	compat/memory.4th \
+	compat/find-name.fs
 
 GFORTH_TEXI =  doc/gforth.texi doc/version.texi
 
@@ -538,7 +553,7 @@ VMGEN_EX2 = $(VMGEN_EX:vmgen-ex/%=vmgen-ex2/%)
 
 ENGINE_SOURCES = engine/Makefile.in engine/config.h.in			\
 	engine/engine.c engine/main.c engine/libmain.c engine/io.c	\
-	engine/support.c engine/signals.c engine/libcc.h.in		\
+	engine/support.c engine/signals.c engine/libcc.h		\
 	engine/gforth.h.in engine/profile.c engine/128bit.h		\
 	engine/getopt.c engine/getopt1.c engine/getopt.h		\
 	engine/select.c engine/ecvt_r.c engine/memcmp.c engine/rint.c	\
@@ -548,29 +563,29 @@ ENGINE_SOURCES = engine/Makefile.in engine/config.h.in			\
 	engine/dblsub.c engine/fnmatch.h engine/fnmatch.c		\
 	engine/zexpand.c engine/androidmain.c engine/sincos.c
 
-SOURCES = $(ENGINE_SOURCES) compat Makefile.in Makedist.in		\
-	unix/Makefile.in gforthmi.in gforthmi.sh.in vmgen.in		\
-	preforth.in libforth.in gforthker.in README.vmgen NEWS.vmgen	\
-	autogen.sh configure.ac configure config.sub config.guess	\
-	elisp-comp stamp-h.in envos.fs.in kernel/version.fs.in iss.sh	\
-	wininst.sh modpath.iss install-sh INSTALL INSTALL.BINDIST	\
-	NEWS README ToDo BUGS BUILD-FROM-SCRATCH model COPYING		\
-	COPYING.LIB COPYING.DOC AUTHORS ChangeLog Benchres aclocal.m4	\
-	doc/Makefile.in doc/gforth.texi.in doc/gforth.1			\
-	doc/version.texi.in doc/vmgen.texi doc/fdl.texi doc/gpl.texi	\
-	gforth.el $(ARCHS) mkinstalldirs siteinit.fs versions.bsh	\
-	glosgen.glo doc/glossaries.doc $(INCLUDES) $(FORTH_SRC)		\
-	$(LIBCC_DIST_SRC) $(LIBCC_GEN_SRC) $(COMPAT) $(VMGEN_EX)	\
-	$(VMGEN_EX2) timings.sc test/coretest.out test/checkans.out	\
-	test/gforth.out test/fp/fptest.out $(wildcard cache*.vmg)	\
-	peeprules.vmg prim debian/rules debian/control.in		\
-	debian/changelog.in debian/compat gforth.ico .travis.yml	\
-	install-swig.sh $(SWIG_WRAP) m4/ax_gcc_builtin.m4
+SOURCES = $(ENGINE_SOURCES) compat Makefile.in Makedist.in unix/Makefile.in   \
+	gforthmi.in gforthmi.sh.in vmgen.in preforth.in libforth.in	      \
+	gforthker.in README.vmgen NEWS.vmgen autogen.sh configure.ac	      \
+	configure config.sub config.guess elisp-comp stamp-h.in envos.fs.in   \
+	kernel/version.fs.in iss.sh wininst.sh modpath.iss firewall.iss	      \
+	install-sh INSTALL INSTALL.BINDIST NEWS README ToDo BUGS	      \
+	BUILD-FROM-SCRATCH model COPYING COPYING.LIB COPYING.DOC AUTHORS      \
+	ChangeLog Benchres aclocal.m4 doc/Makefile.in doc/gforth.texi.in      \
+	doc/gforth.1 doc/version.texi.in doc/vmgen.texi doc/fdl.texi	      \
+	doc/gpl.texi gforth.el $(ARCHS) mkinstalldirs siteinit.fs	      \
+	versions.bsh glosgen.glo doc/glossaries.doc $(INCLUDES) $(FORTH_SRC)  \
+	$(LIBCC_DIST_SRC) $(LIBCC_GEN_SRC) $(COMPAT) $(VMGEN_EX) $(VMGEN_EX2) \
+	timings.sc test/coretest.out test/checkans.out test/gforth.out	      \
+	test/fp/fptest.out $(wildcard cache*.vmg) peeprules.vmg prim	      \
+	debian/rules debian/control.in debian/changelog.in debian/compat      \
+	gforth.ico .travis.yml install-deps.sh install-swig.sh		      \
+	install-freetype-gl.sh install-soil2.sh $(SWIG_WRAP)		      \
+	m4/ax_gcc_builtin.m4
 
 CONFIG_GEN = Makefile Makedist gforthmi gforthmi.sh vmgen preforth	\
-	libforth gforthker engine/Makefile engine/libcc.h		\
-	engine/gforth.h doc/version.texi doc/Makefile unix/Makefile	\
-	debian/changelog debian/control build-ec $(CONFIG_FORTH)
+	libforth gforthker engine/Makefile engine/gforth.h		\
+	doc/version.texi doc/Makefile unix/Makefile debian/changelog	\
+	debian/control build-ec $(CONFIG_FORTH)
 
 CONFIG_FORTH = machpc.fs kernel/version.fs envos.fs
 
@@ -608,7 +623,7 @@ KERN_DEPS = $(KERN_SRC) kernel/aliases.fs kernel/version.fs machpc.fs	\
 
 #distributed documentation
 DOCDIST = doc/gforth.info $(wildcard doc/gforth.info-*) doc/gforth.ps \
-	  doc/vmgen.info doc/vmgen.ps
+	  doc/gforth.txt doc/vmgen.info doc/vmgen.ps
 
 BKERNLS = kernl32b$(EC).fi kernl32l$(EC).fi \
 	  kernl64b$(EC).fi kernl64l$(EC).fi
@@ -622,9 +637,9 @@ GEN_PRECIOUS = $(FORTH_GEN) $(KERNLS) \
 	doc/vmgen.dvi doc/vmgen.ps \
 	$(CONFIG_GEN) configure
 
-#search path patterhn
+#search path pattern
 
-vpath %.fs $(srcdir) $(srcdir)/unix
+vpath %.fs $(srcdir):.:$(srcdir)/unix:$(srcdir)/test:unix
 
 #standards.info recommends this:
 .SUFFIXES:
@@ -698,11 +713,16 @@ distclean:	clean
 		engine/config.h Makefile Makedist engine/Makefile \
 		stamp-h engine/stamp-h \
 		doc/version.texi gforthmi vmgen preforth \
-		$(FORTH_GEN0) $(FORTH_GEN_FAST)
+		$(FORTH_GEN0) $(FORTH_GEN_FAST) start-gforth.el
 
 #realclean is useless, but dangerous, so it's commented out
 realclean:	distclean
 		-$(RM) -rf $(GEN_PRECIOUS) `cat .cvsignore`
+
+kernel-clean:
+		-$(RM) -rf $(KERNLS) $(BKERNLS)
+
+fresh: kernel-clean all
 
 #mostlyclean, but also remove some of the stuff that is distributed
 virtualclean:	mostlyclean
@@ -715,7 +735,9 @@ maintainer-clean: realclean
 #Makefile if it contains our dist rules.  Therefore we have put these
 #rules in Makedist (you can use them with GNU make on these systems).
 
-debdist setup-debdist docdist htmldist: doc
+debdist:
+
+setup-debdist docdist htmldist dist: doc
 
 dist srcdist srconlydist docdist htmldist bindist binonlydist debdist setup-debdist:		Makedist FORCE
 		$(MAKE) -f Makedist d$@
@@ -783,27 +805,43 @@ install-gensources:
 		done
 		echo "\\ empty site-init" > $(siteforthdir)/siteinit.fs
 
+install-txt:	doc
+		$(INSTALL_DATA) doc/gforth.txt $(datadir)/gforth/$(VERSION)/gforth.txt
+
 install-images:
 		$(INSTALL_DATA) $(kernel_fi) $(libdir)/gforth/$(VERSION)
-		GFORTHD="$(DITCENGINE)$(EXT) -p $(siteforthdir)$(PATHSEP)$(siteforthdir)$(PATHSEP)$(datadir)/gforth/$(VERSION)$(PATHSEP)$(libdir)/gforth/$(VERSION) -i $(kernel_fi)" GFORTH="$(DITCENGINE)$(EXT) -p $(siteforthdir)$(PATHSEP)$(siteforthdir)$(PATHSEP)$(datadir)/gforth/$(VERSION)$(PATHSEP)$(libdir)/gforth/$(VERSION) --die-on-signal -i $(kernel_fi) $(STARTUP)" includedir=$(subst $(package),,$(includedir)) bindir=$(subst $(package),,$(bindir)) libccdir=$(libccdir) GFORTHPATH=.:"$$GFORTHPATH" GFORTHDESTDIR="$(package)" ./gforthmi gforth.fi.install $(FORTHSIZES) $(STARTUP) fixfiles.fs
+		GFORTHD="$(DITCENGINE)$(EXT) -p $(siteforthdir)$(PATHSEP)$(siteforthdir)$(PATHSEP)$(datadir)/gforth/$(VERSION)$(PATHSEP)$(libdir)/gforth/$(VERSION) -i $(kernel_fi)" GFORTH="$(DITCENGINE)$(EXT) -p $(siteforthdir)$(PATHSEP)$(siteforthdir)$(PATHSEP)$(datadir)/gforth/$(VERSION)$(PATHSEP)$(libdir)/gforth/$(VERSION) --die-on-signal --debug-mcheck -i $(kernel_fi) $(STARTUP)" includedir=$(subst $(package),,$(includedir)) bindir=$(subst $(package),,$(bindir)) libccdir=$(libccdir) GFORTHPATH=.:"$$GFORTHPATH" GFORTHDESTDIR="$(package)" ./gforthmi gforth.fi.install $(FORTHSIZES) $(STARTUP) fixfiles.fs
 		$(INSTALL_DATA) gforth.fi.install $(libdir)/gforth/$(VERSION)/gforth.fi
 
 install-include:
 		$(srcdir)/mkinstalldirs $(includedir)/gforth/$(VERSION)/$(machine)
-		$(INSTALL_DATA) engine/config.h engine/libcc.h $(includedir)/gforth/$(VERSION)/$(machine)
+		$(INSTALL_DATA) engine/config.h $(srcdir)/engine/libcc.h $(includedir)/gforth/$(VERSION)/$(machine)
 		$(INSTALL_DATA) engine/gforth.h $(includedir)
 
 install-libcc:
-		if test -n "$(LIBTOOL)"; then for i in $(LIBCC_BUILD_SRC); do \
+		if test -n "$(LIBTOOL)"; then for i in $(LIBCC_SRC1) $(LIBCC_BUILD_SRC); do \
 		   $(LIBTOOL) --silent --mode=install $(INSTALL) $(buildccdir)/libgf`basename $$i .fs`.la `(cd $(package)$(libccdir); pwd)`/libgf`basename $$i .fs`.la; \
 		done; fi
 
 install-man:
 		-$(INSTALL_DATA) $(srcdir)/doc/gforth.1 $(man1dir)
 
-install-info:
-		$(INSTALL_INFO) --info-dir=$(infodir) $(infodir)/gforth.info
-		$(INSTALL_INFO) --info-dir=$(infodir) $(infodir)/vmgen.info
+install-info:	doc
+		$(MKDIR) -p $(infodir)
+		$(INSTALL_INFO) --info-dir=$(infodir) doc/gforth.info $(infodir)/gforth.info
+		$(INSTALL_INFO) --info-dir=$(infodir) doc/vmgen.info $(infodir)/vmgen.info
+
+install-html:	html
+		$(MKDIR) -p $(htmldir)/html
+		$(CP) doc/gforth/* $(htmldir)/html
+		$(MKDIR) -p $(htmldir)/../vmgen/html
+		$(CP) doc/vmgen/* $(htmldir)/../vmgen/html
+
+install-pdf:	pdf
+		$(MKDIR) -p $(pdfdir)
+		$(MKDIR) -p $(pdfdir)/../vmgen
+		$(CP) doc/gforth.pdf $(pdfdir)
+		$(CP) doc/vmgen.pdf $(pdfdir)/../vmgen/
 
 install-tags:	install.TAGS
 		$(INSTALL_DATA) install.TAGS $(datadir)/gforth/$(VERSION)/TAGS
@@ -828,15 +866,16 @@ install-elc:
 
 installdeps:	gforth$(EXT) $(FORTH_SRC) $(kernel_fi) gforthmi vmgen doc/gforth.1 prim gforth.fi start-gforth.el
 
-install-indep:	installdeps installdirs-indep install-sources install-man install-info install-elc
+install-indep:	installdeps installdirs-indep install-sources install-man install-elc
 
 install-arch:	installdeps installdirs-arch normal-install rm-install install-prog-bins install-gensources install-images install-include install-libcc install-tags @libinstall@ extra-install
 
-install-seq:	install-indep install-arch
+install-seq:	install-indep install-arch install-txt install-info
 
 post-inst:
 		$(RM) install.TAGS prim.TAGS gforth.fi.install start-gforth.el*
 		$(POST_INSTALL)
+		@test 0$$SUDO_UID -ne 0 && find . -user root | sed -e 's/^/failed to clean: /g' || true
 		@echo
 		@echo
 		@echo "============= INSTALL SUCCEEDED ============="
@@ -878,8 +917,9 @@ installdirs-indep: 	mkinstalldirs
 uninstall:	FORCE
 		$(NORMAL_UNINSTALL)
 		-$(RM) -rf $(libdir)/gforth/$(VERSION) $(datadir)/gforth/$(VERSION) $(includedir)/gforth/$(VERSION)/$(machine)
-		-for i in "$(EXT)" -$(VERSION)$(EXT) -$(ARCH)$(EXT) -$(VERSION)-$(ARCH)$(EXT); do $(RM) $(bindir)/gforth-$$i $(bindir)/gforth-fast-$$i $(bindir)/gforth-itc-$$i $(bindir)/gforthmi-$$i $(bindir)/vmgen-$$i; done
-		@echo -e "To remove Gforth completely, type\n$(RM) -rf $(man1dir)/gforth.1 $(infodir)/gforth.info* $(datadir)/gforth $(libdir)/gforth"
+		-for i in "$(EXT)" -$(VERSION)$(EXT) -$(machine)$(EXT) -$(VERSION)-$(machine)$(EXT); do $(RM) $(bindir)/gforth$$i $(bindir)/gforth-fast$$i $(bindir)/gforth-itc$$i $(bindir)/gforth-ditc$$i $(bindir)/gforthmi$$i ; done
+		-$(RM) $(bindir)/vmgen-$(VERSION)
+		@echo "To remove Gforth completely, type\n$(RM) -rf $(man1dir)/gforth.1 $(infodir)/gforth.info* $(datadir)/gforth $(libdir)/gforth $(bindir)/vmgen"
 
 # Extra dependency for libraries that use libc
 $(buildccdir)/libgfmmap.la: $(buildccdir)/libgflibc.la
@@ -891,7 +931,7 @@ $(buildccdir)/libgf%.la: %.fs $(FORTH_GEN) $(GEN) $(LIBCC_SRC) libforth
 		@NO_FAIL@-./libforth $(package)$(libccdir) $< -e bye
 		-$(TOUCH) $@
 
-build-libcc-named: build-libcc-swig $(LIBCC_BUILD_LA) libccdir
+build-libcc-named libcc: build-libcc-swig $(LIBCC_BUILD_LA) libccdir
 
 libccdir:	$(buildccdir)
 
@@ -902,21 +942,48 @@ build-libcc-swig:
 		(cd unix; $(MAKE))
 
 check:		gforths	gforth.fi more
-		$(MAKE) checkone check-nofast ENGINE="./gforth$(EXT) --no-dynamic" >/dev/null 2>&1
-		@libbench@$(MAKE) checkone check-nofast ENGINE="./libgforth$(EXT) --no-dynamic" >/dev/null 2>&1
-		$(MAKE) checkone check-nofast ENGINE="./gforth-itc$(EXT)" >/dev/null 2>&1
-		@libbench@$(MAKE) checkone check-nofast ENGINE="./libgforth-itc$(EXT)" >/dev/null 2>&1
-		$(MAKE) checkone check-nofast ENGINE="./gforth-ditc$(EXT)" >/dev/null 2>&1
-		@libbench@$(MAKE) checkone check-nofast ENGINE="./libgforth-ditc$(EXT)" >/dev/null 2>&1
-		$(MAKE) checkone ENGINE="./gforth-fast$(EXT) --no-dynamic" >/dev/null 2>&1
-		@libbench@$(MAKE) checkone ENGINE="./libgforth-fast$(EXT) --no-dynamic" >/dev/null 2>&1
-		$(MAKE) checkone check-nofast ENGINE="./gforth$(EXT)" >/dev/null 2>&1
-		@libbench@$(MAKE) checkone check-nofast ENGINE="./libgforth$(EXT)" >/dev/null 2>&1
-		$(MAKE) checkone ENGINE="./gforth-fast$(EXT)" >/dev/null 2>&1
-		@libbench@$(MAKE) checkone ENGINE="./libgforth-fast$(EXT)" >/dev/null 2>&1
+		$(MAKE) checkones
 		@echo "*** Check successful ***"
 		./gforth-fast$(EXT) --diag -e '."     in gforth-fast" cr bye'
 		@libbench@./libgforth-fast$(EXT) --diag -e '."     in libgforth-fast" cr bye'
+
+checkones:	checkg checkgi checkgdi checkgf checkgd checkgfd @libbench@checklibg checklibgi checklibgdi checklibgf checklibgd checklibgfd
+
+checklibg:
+		$(MAKE) checkone check-nofast ENGINE="./libgforth$(EXT) --no-dynamic" >/dev/null 2>&1
+
+checklibgi:
+		$(MAKE) checkone check-nofast ENGINE="./libgforth-itc$(EXT)" >/dev/null 2>&1
+
+checklibgdi:
+		$(MAKE) checkone check-nofast ENGINE="./libgforth-ditc$(EXT)" >/dev/null 2>&1
+
+checklibgf:
+		$(MAKE) checkone ENGINE="./libgforth-fast$(EXT) --no-dynamic" >/dev/null 2>&1
+
+checklibgd:
+		$(MAKE) checkone check-nofast ENGINE="./libgforth$(EXT)" >/dev/null 2>&1
+
+checklibgfd:
+		$(MAKE) checkone ENGINE="./libgforth-fast$(EXT)" >/dev/null 2>&1
+
+checkg:
+		$(MAKE) checkone check-nofast ENGINE="./gforth$(EXT) --no-dynamic" >/dev/null 2>&1
+
+checkgi:
+		$(MAKE) checkone check-nofast ENGINE="./gforth-itc$(EXT)" >/dev/null 2>&1
+
+checkgdi:
+		$(MAKE) checkone check-nofast ENGINE="./gforth-ditc$(EXT)" >/dev/null 2>&1
+
+checkgf:
+		$(MAKE) checkone ENGINE="./gforth-fast$(EXT) --no-dynamic" >/dev/null 2>&1
+
+checkgd:
+		$(MAKE) checkone check-nofast ENGINE="./gforth$(EXT)" >/dev/null 2>&1
+
+checkgfd:
+		$(MAKE) checkone ENGINE="./gforth-fast$(EXT)" >/dev/null 2>&1
 
 checkone test: gforth.fi engine/prim-s.i
 		$(FORTH) test/tester.fs test/coretest.fs test/postpone.fs test/dbltest.fs test/string.fs test/float.fs test/deferred.fs test/coreext.fs test/search.fs -e bye 2>/dev/null | tr -d '\015' | diff -r -u - $(srcdir)/test/coretest.out
@@ -927,7 +994,7 @@ checkone test: gforth.fi engine/prim-s.i
 		$(FORTH) prims2x.fs -e \
 		  "c-flag on s\" prim.i\" out-filename 2! s\" prim.b\" ' output-c ' output-c-combined process-file bye"| \
 		  tr -d '\015' | grep -v '^#line '|diff -u engine/prim-s.i -
-		-$(FORTH) test/fp/runfptests.fth -e bye | diff -u test/fp/fptest.out - || echo "Floating point test failed"
+		-$(FORTH) test/fp/runfptests.fth -e bye | diff -u $(srcdir)/test/fp/fptest.out - || echo "Floating point test failed"
 
 check-nofast: gforth.fi
 		$(FORTHS) test/gforth-nofast.fs -e bye
@@ -963,13 +1030,19 @@ all-bench allbench:
 	./gforth-ditc$(EXT) onebench.fs
 	@libbench@./libgforth-ditc$(EXT) onebench.fs
 
-EXTRAVARS="GCC=$(GCC)" "CFLAGS=$(XCFLAGS)" "LIBTOOL=$(LIBTOOL)" "HOST=$(HOST)" "SRC=$(shell pwd)" "ENGINE=$(DITCENGINE) -i $(shell pwd)/gforth.fi" "LIBCCNAMED=$(shell pwd)/$(buildccdir)" "libccdir=$(libccdir)" "package=$(package)" "PREFIX=$(EXTRAPREFIX)" "datadir=$(datadir)" "ARCH=" "FAST=$(FAST)"
+EXTRAVARS="GCC=$(GCC)" "CFLAGS=$(XCFLAGS)" "LIBTOOL=$(LIBTOOL)" "HOST=$(HOST)" "SRC=$(shell pwd)" "ENGINE=$(DITCENGINE) -i $(shell pwd)/gforth.fi" "LIBCCNAMED=$(shell pwd)/$(buildccdir)" "libccdir=$(libccdir)" "package=$(package)" "PREFIX=$(EXTRAPREFIX)" "datadir=$(datadir)" "ARCH=" "FAST=$(FAST)" "GFVER=$(VERSION)"
 
-extras: $(EXTRAS) gforth.fi
-	@for i in $(EXTRAS); do (cd $$i; $(MAKE) -f ./Makefile configs all $(EXTRAVARS)); done
+extras:	gforth.fi $(EXTRAS:%=%.extras)
 
-extra-install: $(EXTRAS) gforth.fi
-	for i in $(EXTRAS); do (cd $$i; $(MAKE) -f ./Makefile extra-install $(EXTRAVARS)); done
+%.extras:
+	cd $(@:%.extras=%); \
+	$(MAKE) -f ./Makefile configs $(EXTRAVARS); \
+	$(MAKE) -f ./Makefile all $(EXTRAVARS);
+
+extra-install:	gforth.fi $(EXTRAS:%=%.extrasinst)
+
+%.extrasinst:
+	cd $(@:%.extrasinst=%); $(MAKE) -f ./Makefile extra-install $(EXTRAVARS)
 
 # -------------	Make forth images
 
@@ -1005,7 +1078,7 @@ kernl%$(EC).fi:	kernl%$(EC).fi-
 
 #Solaris make does not like that:
 @GNUMAKE@kernl-%.fi:	arch/%/mach.fs arch/%/prim.fs arch/%/asm.fs $(KERN_SRC) kernel/version.fs $(FORTH_GEN0) preforth @kernel_fi@
-@GNUMAKE@		$(PREFORTH) -e 's" $<" include $(srcdir)/kernel/main.fs' -e "save-cross $@- $(bindir)/gforth-$(VERSION) bye"
+@GNUMAKE@		$(PREFORTH) -e 's" $<" include $(srcdir)/kernel-ec/main.fs' -e "save-cross $@- $(bindir)/gforth-$(VERSION) bye"
 @GNUMAKE@		if [ -f `echo $< | sed s/fs/sh/` ]; \
 @GNUMAKE@		then sh `echo $< | sed s/fs/sh/` $@; \
 @GNUMAKE@		else $(CP) $@- $@; \
@@ -1015,7 +1088,7 @@ kernl%$(EC).fi:	kernl%$(EC).fi-
 #arch/%/mach.fs:	arch/%/prim.fs arch/%/asm.fs
 
 gforth.fi:	$(kernel_fi) gforthmi gforth-ditc$(EXT) $(GFORTH_FI_SRC) comp-i.fs
-		GFORTHD="$(DITCENGINE)$(EXT) -p .$(PATHSEP)$(srcdir)" GFORTH="$(DITCENGINE)$(EXT) --die-on-signal -p .$(PATHSEP)$(srcdir) -i $(kernel_fi) $(STARTUP)" includedir=`pwd`/include extrastuff=' -I'`pwd`/include/gforth/$(VERSION)/$(machine) bindir=`pwd` libccdir=`pwd`/$(buildccdir) ./gforthmi gforth.fi $(FORTHSIZES) $(FORTHKFLAGS) $(STARTUP)
+		GFORTHD="$(DITCENGINE)$(EXT) -p .$(PATHSEP)~+$(PATHSEP)$(srcdir)" GFORTH="$(DITCENGINE)$(EXT) --die-on-signal --debug-mcheck -p .$(PATHSEP)~+$(PATHSEP)$(srcdir) -i $(kernel_fi) $(STARTUP)" includedir=`pwd`/include extrastuff=' -I'`pwd`/include/gforth/$(VERSION)/$(machine) bindir=`pwd` libccdir=`pwd`/$(buildccdir) ./gforthmi gforth.fi $(FORTHSIZES) $(FORTHKFLAGS) $(STARTUP)
 
 # -------------	Make c-engine
 
@@ -1086,7 +1159,7 @@ engine/prim_num-fast.i:	prim-fast.b prims2x.fs
 	$(PREFORTH) prims2x.fs -e "c-flag on s\" "$<"\" ' output-c-prim-num ' noop process-file bye" >$@
 
 engine/prim-s.i: engine/prim.i
-		grep -v '^#line ' $(srcdir)/engine/prim.i >$@
+		grep -v '^#line ' $< >$@
 
 kernel/aliases.fs:	prim.b prims2x.fs kernel/aliases0.fs preforth.in
 		$(CP) $(srcdir)/kernel/aliases0.fs $@-
@@ -1144,7 +1217,7 @@ optgforth-fast:
 
 gforth-native$(OPT)$(EXT):	engines-fast
 	$(CP) engine/$@ $@
-	-$(MASSAGE_EXE) $@
+	$(MASSAGE_EXE) $@ || true
 	$(DOSTRIP) $@
 #@GFORTHX_EXE@
 
@@ -1202,17 +1275,17 @@ optlibgforth-fast2:
 libgforth-itc$(EXT): $(ENGINE_SOURCES) $(FORTH_GEN_ENGINE) engine/Makefile engine/config.h
 		cd engine && $(MAKE) libgforth-itc$(EXT) $(MAKELINE-noll)
 		$(LN_S) engine/$@ $@
-		-$(MASSAGE_EXE) $@
+		$(MASSAGE_EXE) $@ || true
 
 libgforth-ditc$(EXT): $(ENGINE_SOURCES) $(FORTH_GEN_ENGINE) engine/Makefile engine/config.h
 		cd engine && $(MAKE) libgforth-ditc$(EXT) $(MAKELINE-noll)
 		$(LN_S) engine/$@ $@
-		-$(MASSAGE_EXE) $@
+		$(MASSAGE_EXE) $@ || true
 
 libgforth-prof$(EXT): $(ENGINE_SOURCES) $(FORTH_GEN_ENGINE) engine/Makefile engine/config.h
 		cd engine && $(MAKE) libgforth-prof$(EXT) $(MAKELINE-noll)
 		$(LN_S) engine/$@ $@
-		-$(MASSAGE_EXE) $@
+		$(MASSAGE_EXE) $@ || true
 
 .PHONY: libgforths
 libgforths:	$(LIBENGINES) $(LIBENGINES_FAST)
@@ -1239,13 +1312,15 @@ tags:		gforth.fi gforth.tags
 install.TAGS:	TAGS install-tags.fs preforth @kernel_fi@
 		sed 's;^\$(srcdir)/;;' TAGS|$(PREFORTH) -e 's" '@datadir@/gforth/$(VERSION)/'"' $(srcdir)/install-tags.fs -e bye >install.TAGS
 
-gforth.TAGS:	@kernel_fi@ gforth$(EXT) $(GFORTH_FI_SRC) $(LIBCC_BUILD_SRC) prim.TAGS kernel.TAGS
-		includedir=`pwd`/include extrastuff=' -I'`pwd`/include/gforth/$(VERSION)/$(machine) $(FORTHK) etags.fs except.fs startup.fs $(LIBCC_BUILD_NOEC) -e bye
+MINOS_ROOT =	@NO_CROSS@ minos2/widgets.fs
+
+gforth.TAGS:	@kernel_fi@ gforth$(EXT) $(GFORTH_FI_SRC) $(LIBCC_BUILD_SRC) $(patsubst %, minos2/%, $(MINOS2_SRC)) prim.TAGS kernel.TAGS
+		includedir=`pwd`/include extrastuff=' -I'`pwd`/include/gforth/$(VERSION)/$(machine) $(FORTHK) etags.fs except.fs startup.fs $(LIBCC_BUILD_NOEC) $(MINOS_ROOT) -e bye
 		cat TAGS prim.TAGS kernel.TAGS >gforth.TAGS
 		rm TAGS
 
-gforth.tags:	@kernel_fi@ gforth$(EXT) $(GFORTH_FI_SRC) prim.tags kernel.tags
-		$(FORTHK) tags.fs except.fs startup.fs -e bye
+gforth.tags:	@kernel_fi@ gforth$(EXT) $(GFORTH_FI_SRC) $(patsubst %, minos2/%, $(MINOS2_SRC)) prim.tags kernel.tags
+		$(FORTHK) tags.fs except.fs startup.fs $(LIBCC_BUILD_NOEC) $(MINOS_ROOT) -e bye
 		cat tags prim.tags kernel.tags >gforth.tags
 		rm tags
 
@@ -1287,7 +1362,9 @@ checkdoc:	doc/gforth.texi.in prim.b ds2texi.fs prims2x.fs doc/doc.fd doc/crossdo
 		-grep unknown doc/gforth.texi
 		-grep doc- doc/gforth.texi| grep -v '^@c'
 
-doc pdf dvi txt ps:	gforth.fi TAGS $(GFORTH_TEXI) $(VMGEN_TEXI) doc/Makefile
+doc/gforth.txt:	txt
+
+doc pdf dvi txt ps html:	gforth.fi $(GFORTH_TEXI) $(VMGEN_TEXI) TAGS doc/Makefile
 		-cd doc; $(MAKE) $@
 
 # For an explanation of the following Makefile rules, see node
@@ -1298,8 +1375,8 @@ doc pdf dvi txt ps:	gforth.fi TAGS $(GFORTH_TEXI) $(VMGEN_TEXI) doc/Makefile
 configure: configure.ac aclocal.m4
 	cd $(srcdir) && autoconf
 
-aclocal.m4:	configure.ac
-		aclocal $(ACLOCAL_AMFLAGS)
+$(srcdir)/aclocal.m4:	configure.ac
+	cd $(srcdir) && aclocal $(ACLOCAL_AMFLAGS)
 
 # autoheader might not change config.h.in, so touch a stamp file.
 engine/config.h.in: stamp-h.in
@@ -1311,7 +1388,7 @@ engine/config.h: stamp-h
 stamp-h: engine/config.h.in config.status stamp-h.in
 	./config.status
 
-kernel/version.fs: Makefile.in Makedist.in engine/Makefile.in doc/Makefile.in unix/Makefile.in gforthmi.in vmgen.in preforth.in libforth.in gforthker.in machpc.fs.in doc/version.texi.in config.status configure.ac envos.fs.in build-ec.in engine/libcc.h.in engine/gforth.h.in gforthmi.sh.in kernel/version.fs.in engine/config.h.in
+kernel/version.fs: Makefile.in Makedist.in engine/Makefile.in doc/Makefile.in unix/Makefile.in gforthmi.in vmgen.in preforth.in libforth.in gforthker.in machpc.fs.in doc/version.texi.in config.status configure.ac envos.fs.in build-ec.in engine/gforth.h.in gforthmi.sh.in kernel/version.fs.in engine/config.h.in
 	./config.status
 
 $(CONFIG_GEN): kernel/version.fs
@@ -1319,3 +1396,5 @@ $(CONFIG_GEN): kernel/version.fs
 config.status: configure
 	./config.status --recheck
 
+ChangeLog.git: FORCE
+	git log --name-only --date=short --pretty=format:'%cd -%d %s <%an> %h%n%b' --abbrev-commit >ChangeLog.git

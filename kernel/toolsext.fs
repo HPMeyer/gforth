@@ -1,4 +1,4 @@
-\ Copyright (C) 1995,1998,2000,2003,2005,2007,2009,2010,2012,2013,2015,2016 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1998,2000,2003,2005,2007,2009,2010,2012,2013,2015,2016,2017,2018 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -18,9 +18,9 @@
 Warnings off
 
 Variable countif
+Variable endif?  -1 cells allot -1 1 cells times
 
 : dummy ;  immediate
-: >exec  >r ;
 : scanIF   f83find  dup 0=  IF  drop ['] dummy ( >head-noprim )  THEN  ;
 
 Create [struct]-search    ' scanIF A,  ' (reveal) A,  ' drop A, ' drop A,
@@ -29,14 +29,15 @@ Create [struct]-voc       [struct]-search A,  NIL A,  NIL A,
 : scanif-r ( addr u -- xt )
     [struct]-voc find-name-in name?int ;
 
-: ?if ( parser -- parser / )  countif @ 0<
-    IF  is parser1  THEN ;
+: ?if ( -- )  countif @ 0< IF  endif? on  THEN ;
+
+: scanning? ( -- flag ) endif? @ 0= ;
 
 UNLOCK  Tlast @ TNIL Tlast !  LOCK
 \ last @  0 last !
 
 : [IF]
-  1 countif +! ?if ;       immediate
+  1 countif +! ?if ;        immediate
 : [THEN]
   -1 countif +! ?if ;       immediate
 : [ELSE]
@@ -74,7 +75,19 @@ UNLOCK Tlast @ swap Tlast ! LOCK
 : [undefined] ( "<spaces>name" -- flag ) postpone [defined] 0= ; immediate
   \G returns false if name is found in current search order
 
-: [IF] ( flag -- / parser ) \ tools-ext bracket-if
+: scanif ( -- )
+    countif off endif? off  current-sourcepos3 >r >r >r
+    BEGIN
+	BEGIN
+	    parse-name dup  WHILE  scanif-r execute
+	    endif? @  UNTIL  rdrop rdrop rdrop  EXIT  THEN  2drop
+	refill  WHILE
+	endif? @  UNTIL  rdrop rdrop rdrop  EXIT  THEN
+    r> r> r> source drop + 1 input-lexeme 2! loadline ! loadfilename# !
+    s" unfinished [IF] at end of file" true ['] type ?warning
+    endif? on ;
+
+: [IF] ( flag -- ) \ tools-ext bracket-if
   \G If flag is @code{TRUE} do nothing (and therefore
   \G execute subsequent words as normal). If flag is @code{FALSE},
   \G parse and discard words from the parse
@@ -83,9 +96,7 @@ UNLOCK Tlast @ swap Tlast ! LOCK
   \G @code{[ELSE]}.. @code{[THEN]} and @code{[IF]}.. @code{[THEN]}
   \G until the balancing @code{[ELSE]} or @code{[THEN]} has been
   \G parsed and discarded. Immediate word.
-    0= IF  countif off
-	['] parser1 defer@  ['] scanif-r is parser1
-    THEN ;                                      immediate
+    0= IF  scanif  THEN ;                               immediate
 
 : [IFDEF] ( "<spaces>name" -- ) \ gforth bracket-if-def
   \G If name is found in the current search-order, behave like
@@ -120,50 +131,3 @@ UNLOCK Tlast @ swap Tlast ! LOCK
 : [ENDIF] ( -- ) \ gforth bracket-end-if
   \G Do nothing; synonym for @code{[THEN]}
   ;                                                   immediate
-
-\ Structs for interpreter                              28nov92py
-
-User (i)
-
-: [DO]  ( n-limit n-index -- ) \ gforth bracket-do
-  >in @ -rot
-  DO   I (i) ! dup >r >in ! interpret r> swap +LOOP  drop ;
-                                                      immediate
-
-: [?DO] ( n-limit n-index -- ) \ gforth bracket-question-do
-  2dup = IF 2drop postpone [ELSE] ELSE postpone [DO] THEN ;
-                                                      immediate
-
-: [+LOOP] ( n -- ) \ gforth bracket-question-plus-loop
-  rdrop ;                                             immediate
-
-: [LOOP] ( -- ) \ gforth bracket-loop
-  1 rdrop ;                                           immediate
-
-: [FOR] ( n -- ) \ gforth bracket-for
-  0 swap postpone [DO] ;                              immediate
-
-: [NEXT] ( n -- ) \ gforth bracket-next
-  -1 rdrop ;                                          immediate
-
-: [I] ( -- n ) \ gforth bracket-i
-    (i) @ ;
-comp: drop (i) @ postpone Literal ;
-
-: [BEGIN] ( -- ) \ gforth bracket-begin
-  >in @ >r BEGIN r@ >in ! interpret UNTIL rdrop ;     immediate
-
-' [+LOOP]  Alias [UNTIL] ( flag -- ) \ gforth bracket-until
-                                                      immediate
-
-: [REPEAT]  ( -- ) \ gforth bracket-repeat
-  false rdrop ;                                       immediate
-
-' [REPEAT] Alias [AGAIN] ( -- ) \ gforth bracket-again
-                                                      immediate
-
-: [WHILE]   ( flag -- ) \ gforth bracket-while
-  0= IF   postpone [ELSE] true rdrop 1 countif +!  THEN ;
-                                                      immediate
-
-\ Warnings on
